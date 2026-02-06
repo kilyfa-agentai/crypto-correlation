@@ -172,31 +172,34 @@ def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
     return prices
 
 def get_bitget_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fallback 2: Bitget API"""
+    """Fallback 2: Bitget API V2"""
     symbol = COIN_SYMBOLS.get(coin_id.lower())
     if not symbol:
         raise Exception(f"Unknown coin for Bitget: {coin_id}")
     
-    url = f"{BITGET_API}/api/spot/v1/market/candles"
+    # Bitget V2 API endpoint
+    url = f"{BITGET_API}/api/v2/spot/market/candles"
     
     end_time = int(datetime.now().timestamp() * 1000)
     start_time = end_time - (days * 24 * 60 * 60 * 1000)
     
     params = {
         "symbol": symbol,
-        "period": "1day",
+        "granularity": "1D",  # V2 uses granularity, not period
         "startTime": str(start_time),
         "endTime": str(end_time),
         "limit": str(days)
     }
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
     }
     
     response = requests.get(url, params=params, headers=headers, timeout=10)
     
-    print(f"Bitget API: {symbol}, Status: {response.status_code}")
+    print(f"Bitget V2 API: {symbol}, Status: {response.status_code}")
     
     if response.status_code != 200:
         raise Exception(f"Bitget error: {response.status_code}")
@@ -209,8 +212,9 @@ def get_bitget_prices(coin_id: str, days: int = 30) -> List[float]:
     if not candles:
         raise Exception("No data from Bitget")
     
-    prices = [float(candle[4]) for candle in candles]
-    prices.reverse()
+    # Bitget V2 candles format: [timestamp, open, high, low, close, volume, quoteVolume]
+    prices = [float(candle[4]) for candle in candles]  # Close price
+    prices.reverse()  # Oldest first
     return prices
 
 def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
