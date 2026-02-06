@@ -30,14 +30,18 @@ User → Vercel (Frontend React)
 • Pilih branch: `main`
 
 ### 1.3 Configure Service
+
+**⚠️ Important: Use Manual Settings, Not render.yaml**
+
+Karena struktur project (backend/frontend di satu repo), gunakan setting manual:
+
 | Setting | Value |
 |---------|-------|
 | Name | `crypto-correlation-api` |
 | Runtime | Python 3 |
+| Root Directory | `backend` ← **Penting!** |
 | Build Command | `pip install -r requirements.txt` |
 | Start Command | `uvicorn app:app --host 0.0.0.0 --port 10000` |
-| Root Directory | `backend` |
-| Plan | Free |
 
 ### 1.4 Deploy
 • Click **"Create Web Service"**

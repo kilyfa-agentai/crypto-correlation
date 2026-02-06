@@ -3,11 +3,8 @@ services:
     name: crypto-correlation-api
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port 10000
-    rootDir: backend
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn app:app --host 0.0.0.0 --port 10000
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
-      - key: COINGECKO_API_KEY
-        sync: false
