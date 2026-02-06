@@ -3,14 +3,6 @@ import './App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-// Popular coins list for autocomplete
-const POPULAR_COINS = [
-  'bitcoin', 'ethereum', 'solana', 'cardano', 'polkadot', 'avalanche',
-  'polygon', 'chainlink', 'stellar', 'cosmos', 'algorand', 'near',
-  'aptos', 'sui', 'arbitrum', 'optimism', 'uniswap', 'aave',
-  'binancecoin', 'ripple', 'dogecoin', 'shiba-inu', 'tron', 'litecoin'
-];
-
 function App() {
   const [coins, setCoins] = useState(['bitcoin', 'ethereum', 'solana']);
   const [days, setDays] = useState(30);
