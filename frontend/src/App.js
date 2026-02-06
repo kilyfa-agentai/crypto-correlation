@@ -20,15 +20,8 @@ function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [error, setError] = useState(null);
-  const [coinList, setCoinList] = useState([]);
   const [showCoinList, setShowCoinList] = useState(false);
   const searchRef = useRef(null);
-
-  // Fetch available coins on mount
-  useEffect(() => {
-    // Using popular coins as initial list
-    setCoinList(POPULAR_COINS);
-  }, []);
 
   const fetchCorrelationMatrix = useCallback(async () => {
     setLoading(true);
