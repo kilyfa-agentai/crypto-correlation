@@ -11,7 +11,12 @@ import google.generativeai as genai
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="Crypto Correlation API")
+app = FastAPI(
+    title="Crypto Correlation API",
+    docs_url=None,  # Disable Swagger UI
+    redoc_url=None,  # Disable ReDoc
+    openapi_url=None  # Disable OpenAPI schema
+)
 
 # CORS
 app.add_middleware(
