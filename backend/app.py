@@ -470,13 +470,21 @@ def get_bitget_coins_list() -> List[str]:
                 available_coins = []
                 
                 for coin in coins_data:
-                    coin_id = coin.get("coinId", "").lower()
-                    if coin_id:
-                        available_coins.append(coin_id)
+                    # In Bitget V2, coinName is usually the ticker (BTC, ETH)
+                    # coinId might be internal ID or same as ticker depending on endpoint version
+                    coin_ticker = coin.get("coinName", "").lower()
+                    
+                    # Fallback to symbol if coinName is empty, strips USDT if present
+                    if not coin_ticker:
+                         symbol = coin.get("symbol", "").lower()
+                         coin_ticker = symbol.replace("usdt", "")
+
+                    if coin_ticker:
+                        available_coins.append(coin_ticker)
                         # Update symbol mapping
-                        symbol = f"{coin_id.upper()}USDT"
-                        if coin_id not in COIN_SYMBOLS:
-                            COIN_SYMBOLS[coin_id] = symbol
+                        symbol = f"{coin_ticker.upper()}USDT"
+                        if coin_ticker not in COIN_SYMBOLS:
+                            COIN_SYMBOLS[coin_ticker] = symbol
                 
                 _bitget_coins_cache["coins"] = available_coins
                 _bitget_coins_cache["last_fetched"] = time.time()

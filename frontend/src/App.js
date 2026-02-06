@@ -159,6 +159,8 @@ function App() {
       setCoins([...coins, coinId]);
       setNewCoin("");
       setShowSuggestions(false);
+      setSuggestions([]); // Clear suggestions
+      setSearchResults(null); // Clear search results
     }
   };
 
@@ -223,18 +225,37 @@ function App() {
       <div className="controls-card">
         <div className="search-section" ref={searchRef}>
           <label className="section-label">🔍 Add Cryptocurrency</label>
-          <div className="search-container">
-            <input
-              type="text"
-              value={newCoin}
-              onChange={(e) => setNewCoin(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onFocus={() => newCoin.length === 0 && setShowCoinList(true)}
-              placeholder="Type to search (e.g., stellar, cardano)..."
-              className="search-input"
-            />
-            <button onClick={() => addCoin()} className="add-btn" disabled={!newCoin}>
-              + Add
+          <div className="google-search-wrapper">
+            <div className="google-search-container">
+              <svg className="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M9 17C13.4183 17 17 13.4183 17 9C17 4.58172 13.4183 1 9 1C4.58172 1 1 4.58172 1 9C1 13.4183 4.58172 17 9 17Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M19 19L14.65 14.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <input
+                type="text"
+                value={newCoin}
+                onChange={(e) => setNewCoin(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={() => newCoin.length === 0 && setShowCoinList(true)}
+                placeholder="Search cryptocurrency..."
+                className="google-search-input"
+              />
+              {newCoin && (
+                <button
+                  className="clear-btn"
+                  onClick={() => {
+                    setNewCoin("");
+                    setShowSuggestions(false);
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 10l5.09-5.09L10 10l5.09 5.09L10 10zm0 0L4.91 4.91 10 10l-5.09 5.09L10 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <button onClick={() => addCoin()} className="google-add-btn" disabled={!newCoin}>
+              Add
             </button>
           </div>
 
@@ -243,15 +264,19 @@ function App() {
             <div className="suggestions-dropdown">
               {searchResults?.categories?.exact_match && searchResults.categories.exact_match.length > 0 && (
                 <div className="suggestion-category">
-                  <div className="category-label">🎯 Exact Match</div>
                   {searchResults.categories.exact_match
                     .filter((coin) => !coins.includes(coin))
                     .slice(0, 3)
                     .map((coin) => (
-                      <div key={`exact-${coin}`} className="suggestion-item exact-match" onClick={() => addCoin(coin)}>
-                        <span className="coin-icon">🎯</span>
-                        <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
-                        <span className="match-badge">Exact</span>
+                      <div key={`exact-${coin}`} className="google-suggestion-item exact-match" onClick={() => addCoin(coin)}>
+                        <div className="suggestion-icon">🎯</div>
+                        <div className="suggestion-content">
+                          <div className="suggestion-title">
+                            <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                            <span className="exact-badge">Exact match</span>
+                          </div>
+                          <div className="suggestion-description">Cryptocurrency • Available on Bitget</div>
+                        </div>
                       </div>
                     ))}
                 </div>
@@ -259,13 +284,18 @@ function App() {
 
               {searchResults?.categories?.similar && searchResults.categories.similar.length > 0 && (
                 <div className="suggestion-category">
-                  <div className="category-label">💡 Similar Results</div>
                   {searchResults.categories.similar
                     .filter((coin) => !coins.includes(coin))
+                    .slice(0, 5)
                     .map((coin) => (
-                      <div key={`similar-${coin}`} className="suggestion-item" onClick={() => addCoin(coin)}>
-                        <span className="coin-icon">🪙</span>
-                        <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                      <div key={`similar-${coin}`} className="google-suggestion-item" onClick={() => addCoin(coin)}>
+                        <div className="suggestion-icon">🪙</div>
+                        <div className="suggestion-content">
+                          <div className="suggestion-title">
+                            <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                          </div>
+                          <div className="suggestion-description">Cryptocurrency • Similar to your search</div>
+                        </div>
                       </div>
                     ))}
                 </div>
@@ -273,11 +303,15 @@ function App() {
 
               {suggestions.length > 0 && (!searchResults?.categories?.exact_match || searchResults.categories.exact_match.length === 0) && (!searchResults?.categories?.similar || searchResults.categories.similar.length === 0) && (
                 <div className="suggestion-category">
-                  <div className="category-label">🔍 Suggestions</div>
-                  {suggestions.map((coin) => (
-                    <div key={coin} className="suggestion-item" onClick={() => addCoin(coin)}>
-                      <span className="coin-icon">🪙</span>
-                      <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                  {suggestions.slice(0, 5).map((coin) => (
+                    <div key={coin} className="google-suggestion-item" onClick={() => addCoin(coin)}>
+                      <div className="suggestion-icon">🔍</div>
+                      <div className="suggestion-content">
+                        <div className="suggestion-title">
+                          <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                        </div>
+                        <div className="suggestion-description">Cryptocurrency suggestion</div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -286,15 +320,20 @@ function App() {
               {/* Bitget Recommended */}
               {searchResults?.categories?.bitget_recommended && searchResults.categories.bitget_recommended.length > 0 && (
                 <div className="suggestion-category">
-                  <div className="category-label">⚡ Recommended from Bitget</div>
+                  <div className="bitget-header">⚡ Recommended from Bitget</div>
                   {searchResults.categories.bitget_recommended
                     .filter((coin) => !coins.includes(coin))
                     .slice(0, 5)
                     .map((coin) => (
-                      <div key={`bitget-${coin}`} className="suggestion-item bitget-recommended" onClick={() => addCoin(coin)}>
-                        <span className="coin-icon">💎</span>
-                        <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
-                        <span className="source-badge">Bitget</span>
+                      <div key={`bitget-${coin}`} className="google-suggestion-item bitget-item" onClick={() => addCoin(coin)}>
+                        <div className="suggestion-icon bitget-icon">💎</div>
+                        <div className="suggestion-content">
+                          <div className="suggestion-title">
+                            <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                            <span className="bitget-badge">Bitget</span>
+                          </div>
+                          <div className="suggestion-description">Popular on Bitget Exchange</div>
+                        </div>
                       </div>
                     ))}
                 </div>
