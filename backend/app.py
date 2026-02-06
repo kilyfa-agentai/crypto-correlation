@@ -16,24 +16,95 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-COINGECKO_API = "https://api.coingecko.com/api/v3"
+BITGET_API = "https://api.bitget.com"
+
+# Coin symbol mapping (coin_id -> Bitget symbol)
+COIN_SYMBOLS = {
+    'bitcoin': 'BTCUSDT',
+    'ethereum': 'ETHUSDT',
+    'solana': 'SOLUSDT',
+    'cardano': 'ADAUSDT',
+    'polkadot': 'DOTUSDT',
+    'avalanche': 'AVAXUSDT',
+    'polygon': 'MATICUSDT',
+    'chainlink': 'LINKUSDT',
+    'stellar': 'XLMUSDT',
+    'cosmos': 'ATOMUSDT',
+    'algorand': 'ALGOUSDT',
+    'near': 'NEARUSDT',
+    'aptos': 'APTUSDT',
+    'sui': 'SUIUSDT',
+    'arbitrum': 'ARBUSDT',
+    'optimism': 'OPUSDT',
+    'uniswap': 'UNIUSDT',
+    'aave': 'AAVEUSDT',
+    'binancecoin': 'BNBUSDT',
+    'ripple': 'XRPUSDT',
+    'dogecoin': 'DOGEUSDT',
+    'shiba-inu': 'SHIBUSDT',
+    'tron': 'TRXUSDT',
+    'litecoin': 'LTCUSDT',
+}
+
+def get_bitget_symbol(coin_id: str) -> str:
+    """Convert coin ID to Bitget symbol"""
+    coin_id = coin_id.lower().replace(' ', '-')
+    if coin_id in COIN_SYMBOLS:
+        return COIN_SYMBOLS[coin_id]
+    # Try common patterns
+    return f"{coin_id.upper()}USDT"
 
 def get_historical_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fetch historical prices from CoinGecko"""
-    url = f"{COINGECKO_API}/coins/{coin_id}/market_chart"
+    """Fetch historical prices from Bitget"""
+    symbol = get_bitget_symbol(coin_id)
+    
+    # Bitget candlesticks endpoint
+    # granularity: 1min, 5min, 15min, 30min, 1h, 4h, 1D, 1W
+    url = f"{BITGET_API}/api/v2/spot/market/candles"
+    
+    # Calculate start time (days ago)
+    end_time = int(datetime.now().timestamp() * 1000)
+    start_time = end_time - (days * 24 * 60 * 60 * 1000)
+    
     params = {
-        "vs_currency": "usd",
-        "days": days,
-        "interval": "daily"
+        "symbol": symbol,
+        "granularity": "1D",  # Daily candles
+        "startTime": str(start_time),
+        "endTime": str(end_time),
+        "limit": str(days)
     }
     
-    response = requests.get(url, params=params)
-    if response.status_code != 200:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch data for {coin_id}")
-    
-    data = response.json()
-    prices = [price[1] for price in data["prices"]]
-    return prices
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Failed to fetch data for {coin_id} (symbol: {symbol}). Status: {response.status_code}"
+            )
+        
+        data = response.json()
+        if data.get("code") != "00000":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Bitget API error for {coin_id}: {data.get('msg', 'Unknown error')}"
+            )
+        
+        candles = data.get("data", [])
+        if not candles:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No data found for {coin_id} (symbol: {symbol})"
+            )
+        
+        # Bitget candles format: [timestamp, open, high, low, close, volume]
+        prices = [float(candle[4]) for candle in candles]  # Close price
+        prices.reverse()  # Oldest first
+        return prices
+        
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail=f"Timeout fetching data for {coin_id}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Network error: {str(e)}")
 
 def calculate_returns(prices: List[float]) -> List[float]:
     """Calculate percentage returns"""
