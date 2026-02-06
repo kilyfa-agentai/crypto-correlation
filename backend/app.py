@@ -379,14 +379,65 @@ def calculate_beta(coin_returns: List[float], btc_returns: List[float]) -> float
 @app.get("/api/coins")
 def get_available_coins():
     """
-    Get list of available coins
+    Get list of available coins - try Bitget first, fallback to static
     """
-    # Return static list (reliable)
-    return {
-        "coins": list(COIN_SYMBOLS.keys()),
-        "source": "static_list",
-        "count": len(COIN_SYMBOLS)
-    }
+    try:
+        # Try to fetch from Bitget V2 API
+        url = f"{BITGET_API}/api/v2/spot/public/coins"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("code") == "00000" and data.get("data"):
+                coins_data = data.get("data", [])
+                available_coins = []
+                
+                for coin in coins_data:
+                    coin_id = coin.get("coinId", "").lower()
+                    coin_name = coin.get("coinName", "").lower()
+                    
+                    # Only include coins with USDT pair
+                    if coin_id:
+                        symbol = f"{coin_id.upper()}USDT"
+                        # Update mapping
+                        if coin_id not in COIN_SYMBOLS:
+                            COIN_SYMBOLS[coin_id] = symbol
+                        available_coins.append(coin_id)
+                
+                if available_coins:
+                    return {
+                        "coins": available_coins[:200],  # Return top 200
+                        "source": "bitget_api",
+                        "count": len(available_coins)
+                    }
+        
+        # If API call fails, return static list + some extras
+        extended_list = list(COIN_SYMBOLS.keys()) + [
+            'sui', 'sei', 'blur', 'pepe', 'floki', 'bonk', 'wld',
+            'pendle', 'ondo', 'bera', 'taiko', 'zksync', 'scroll',
+            'eigenlayer', 'bittensor', 'render', 'injective',
+            'celestia', 'dymension', 'manta', 'blast', 'mode'
+        ]
+        
+        return {
+            "coins": list(set(extended_list)),  # Remove duplicates
+            "source": "extended_static_list",
+            "count": len(set(extended_list))
+        }
+        
+    except Exception as e:
+        print(f"Error fetching coins: {e}")
+        # Fallback to static list
+        return {
+            "coins": list(COIN_SYMBOLS.keys()),
+            "source": "static_fallback",
+            "count": len(COIN_SYMBOLS)
+        }
 
 @app.get("/api/search")
 def search_coins(query: str = ""):

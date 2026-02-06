@@ -330,29 +330,46 @@ body {
 /* Coin Grid */
 .coin-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
-  padding: 12px;
-  max-height: 300px;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+  padding: 16px;
+  max-height: 350px;
   overflow-y: auto;
 }
 
+/* Custom scrollbar for coin grid */
+.coin-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.coin-grid::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+  border-radius: 4px;
+}
+
+.coin-grid::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 4px;
+}
+
 .coin-chip {
-  padding: 10px 15px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--bg-dark);
+  border: 2px solid var(--border);
+  border-radius: 10px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 14px;
+  font-size: 13px;
   text-transform: capitalize;
+  font-weight: 500;
 }
 
 .coin-chip:hover:not(.selected) {
   border-color: var(--primary);
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(99, 102, 241, 0.15);
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .coin-chip.selected {

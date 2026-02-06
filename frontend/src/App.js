@@ -23,10 +23,12 @@ function App() {
       try {
         const response = await fetch(`${API_URL}/api/coins`);
         const data = await response.json();
-        setAllCoins(data.coins || []);
+        const coins = data.coins || [];
+        setAllCoins(coins);
+        console.log(`Loaded ${coins.length} coins from ${data.source}`);
       } catch (err) {
         console.error('Failed to fetch coins:', err);
-        // Fallback to default list
+        // Fallback to extended list
         setAllCoins([
           'bitcoin', 'ethereum', 'solana', 'cardano', 'polkadot', 'avalanche',
           'polygon', 'chainlink', 'stellar', 'cosmos', 'algorand', 'near',
