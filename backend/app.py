@@ -131,15 +131,89 @@ def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
     
     try:
         response = requests.get(url, params=params, headers=headers, timeout=10)
+        
+        print(f"CoinGecko API Request: {url}")
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 429:
+            # Rate limited - try Binance
+            print("CoinGecko rate limited, trying Binance...")
+            return get_binance_prices(coin_id, days)
+        
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Failed to fetch data for {coin_id} from both Bitget and CoinGecko"
-            )
+            return get_binance_prices(coin_id, days)
         
         data = response.json()
         prices = [price[1] for price in data["prices"]]
         return prices
+    except Exception as e:
+        print(f"CoinGecko error: {e}")
+        return get_binance_prices(coin_id, days)
+
+def get_binance_prices(coin_id: str, days: int = 30) -> List[float]:
+    """Fallback to Binance API"""
+    # Map coin_id to Binance symbol
+    symbol_map = {
+        'bitcoin': 'BTCUSDT',
+        'ethereum': 'ETHUSDT',
+        'solana': 'SOLUSDT',
+        'cardano': 'ADAUSDT',
+        'polkadot': 'DOTUSDT',
+        'avalanche': 'AVAXUSDT',
+        'polygon': 'MATICUSDT',
+        'chainlink': 'LINKUSDT',
+        'stellar': 'XLMUSDT',
+        'cosmos': 'ATOMUSDT',
+        'algorand': 'ALGOUSDT',
+        'near': 'NEARUSDT',
+        'aptos': 'APTUSDT',
+        'sui': 'SUIUSDT',
+        'arbitrum': 'ARBUSDT',
+        'optimism': 'OPUSDT',
+        'uniswap': 'UNIUSDT',
+        'aave': 'AAVEUSDT',
+        'binancecoin': 'BNBUSDT',
+        'ripple': 'XRPUSDT',
+        'dogecoin': 'DOGEUSDT',
+        'shiba-inu': 'SHIBUSDT',
+        'tron': 'TRXUSDT',
+        'litecoin': 'LTCUSDT',
+    }
+    
+    symbol = symbol_map.get(coin_id.lower(), f"{coin_id.upper()}USDT")
+    
+    url = "https://api.binance.com/api/v3/klines"
+    
+    # Calculate start time
+    end_time = int(datetime.now().timestamp() * 1000)
+    start_time = end_time - (days * 24 * 60 * 60 * 1000)
+    
+    params = {
+        "symbol": symbol,
+        "interval": "1d",
+        "startTime": start_time,
+        "endTime": end_time,
+        "limit": days
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        
+        print(f"Binance API Request: {url}")
+        print(f"Symbol: {symbol}")
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Failed to fetch data for {coin_id} from all sources (Bitget, CoinGecko, Binance)"
+            )
+        
+        data = response.json()
+        # Binance klines: [openTime, open, high, low, close, volume, ...]
+        prices = [float(candle[4]) for candle in data]  # Close price
+        return prices
+        
     except Exception as e:
         raise HTTPException(
             status_code=400, 
