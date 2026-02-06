@@ -55,65 +55,163 @@ def get_bitget_symbol(coin_id: str) -> str:
     return f"{coin_id.upper()}USDT"
 
 def get_historical_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fetch historical prices from Bitget"""
-    symbol = get_bitget_symbol(coin_id)
+    """Fetch historical prices - Binance as primary"""
     
-    # Try Bitget v1 API (more stable)
-    url = f"{BITGET_API}/api/spot/v1/market/candles"
+    # Try Binance first (most reliable)
+    try:
+        return get_binance_prices(coin_id, days)
+    except Exception as e:
+        print(f"Binance failed: {e}")
     
-    # Calculate start time (days ago)
+    # Fallback to CoinGecko
+    try:
+        return get_coingecko_prices(coin_id, days)
+    except Exception as e:
+        print(f"CoinGecko failed: {e}")
+    
+    # Last resort - Bitget
+    try:
+        return get_bitget_prices(coin_id, days)
+    except Exception as e:
+        print(f"Bitget failed: {e}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Failed to fetch data for {coin_id} from all sources"
+        )
+
+def get_binance_prices(coin_id: str, days: int = 30) -> List[float]:
+    """Primary: Binance API"""
+    # Map coin_id to Binance symbol
+    symbol_map = {
+        'bitcoin': 'BTCUSDT',
+        'ethereum': 'ETHUSDT',
+        'solana': 'SOLUSDT',
+        'cardano': 'ADAUSDT',
+        'polkadot': 'DOTUSDT',
+        'avalanche': 'AVAXUSDT',
+        'polygon': 'MATICUSDT',
+        'chainlink': 'LINKUSDT',
+        'stellar': 'XLMUSDT',
+        'cosmos': 'ATOMUSDT',
+        'algorand': 'ALGOUSDT',
+        'near': 'NEARUSDT',
+        'aptos': 'APTUSDT',
+        'sui': 'SUIUSDT',
+        'arbitrum': 'ARBUSDT',
+        'optimism': 'OPUSDT',
+        'uniswap': 'UNIUSDT',
+        'aave': 'AAVEUSDT',
+        'binancecoin': 'BNBUSDT',
+        'ripple': 'XRPUSDT',
+        'dogecoin': 'DOGEUSDT',
+        'shiba-inu': 'SHIBUSDT',
+        'tron': 'TRXUSDT',
+        'litecoin': 'LTCUSDT',
+    }
+    
+    symbol = symbol_map.get(coin_id.lower())
+    if not symbol:
+        raise Exception(f"Unknown coin: {coin_id}")
+    
+    url = "https://api.binance.com/api/v3/klines"
+    
+    # Calculate start time (milliseconds)
     end_time = int(datetime.now().timestamp() * 1000)
     start_time = end_time - (days * 24 * 60 * 60 * 1000)
     
     params = {
         "symbol": symbol,
-        "period": "1day",  # 1day, 4hour, 1hour, etc
+        "interval": "1d",
+        "startTime": start_time,
+        "endTime": end_time,
+        "limit": days
+    }
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    response = requests.get(url, params=params, headers=headers, timeout=10)
+    
+    print(f"Binance API: {symbol}, Status: {response.status_code}")
+    
+    if response.status_code != 200:
+        raise Exception(f"Binance error: {response.status_code}")
+    
+    data = response.json()
+    if not data:
+        raise Exception("No data from Binance")
+    
+    # Binance klines: [openTime, open, high, low, close, volume, ...]
+    prices = [float(candle[4]) for candle in data]  # Close price
+    return prices
+
+def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
+    """Fallback 1: CoinGecko API"""
+    COINGECKO_API = "https://api.coingecko.com/api/v3"
+    url = f"{COINGECKO_API}/coins/{coin_id}/market_chart"
+    params = {
+        "vs_currency": "usd",
+        "days": days,
+        "interval": "daily"
+    }
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    response = requests.get(url, params=params, headers=headers, timeout=10)
+    
+    print(f"CoinGecko API: {coin_id}, Status: {response.status_code}")
+    
+    if response.status_code != 200:
+        raise Exception(f"CoinGecko error: {response.status_code}")
+    
+    data = response.json()
+    prices = [price[1] for price in data["prices"]]
+    return prices
+
+def get_bitget_prices(coin_id: str, days: int = 30) -> List[float]:
+    """Fallback 2: Bitget API"""
+    symbol = COIN_SYMBOLS.get(coin_id.lower())
+    if not symbol:
+        raise Exception(f"Unknown coin for Bitget: {coin_id}")
+    
+    url = f"{BITGET_API}/api/spot/v1/market/candles"
+    
+    end_time = int(datetime.now().timestamp() * 1000)
+    start_time = end_time - (days * 24 * 60 * 60 * 1000)
+    
+    params = {
+        "symbol": symbol,
+        "period": "1day",
         "startTime": str(start_time),
         "endTime": str(end_time),
         "limit": str(days)
     }
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        
-        # Debug logging
-        print(f"Bitget API Request: {url}")
-        print(f"Params: {params}")
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            # Try fallback to CoinGecko if Bitget fails
-            print(f"Bitget failed, trying CoinGecko fallback...")
-            return get_coingecko_prices(coin_id, days)
-        
-        data = response.json()
-        if data.get("code") != "00000":
-            print(f"Bitget API error: {data}")
-            return get_coingecko_prices(coin_id, days)
-        
-        candles = data.get("data", [])
-        if not candles:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"No data found for {coin_id} (symbol: {symbol})"
-            )
-        
-        # Bitget candles format: [timestamp, open, high, low, close, volume]
-        prices = [float(candle[4]) for candle in candles]  # Close price
-        prices.reverse()  # Oldest first
-        return prices
-        
-    except requests.exceptions.Timeout:
-        raise HTTPException(status_code=504, detail=f"Timeout fetching data for {coin_id}")
-    except requests.exceptions.RequestException as e:
-        print(f"Network error: {e}")
-        return get_coingecko_prices(coin_id, days)
+    response = requests.get(url, params=params, headers=headers, timeout=10)
+    
+    print(f"Bitget API: {symbol}, Status: {response.status_code}")
+    
+    if response.status_code != 200:
+        raise Exception(f"Bitget error: {response.status_code}")
+    
+    data = response.json()
+    if data.get("code") != "00000":
+        raise Exception(f"Bitget API error: {data.get('msg')}")
+    
+    candles = data.get("data", [])
+    if not candles:
+        raise Exception("No data from Bitget")
+    
+    prices = [float(candle[4]) for candle in candles]
+    prices.reverse()
+    return prices
 
 def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
     """Fallback to CoinGecko API"""
