@@ -1,26 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Line, Scatter } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -31,7 +10,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [newCoin, setNewCoin] = useState('');
 
-  const fetchCorrelationMatrix = async () => {
+  const fetchCorrelationMatrix = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(`${API_URL}/api/correlation-matrix?coins=${coins.join(',')}&days=${days}`);
@@ -41,11 +20,11 @@ function App() {
       console.error('Error fetching data:', error);
     }
     setLoading(false);
-  };
+  }, [coins, days]);
 
   useEffect(() => {
     fetchCorrelationMatrix();
-  }, []);
+  }, [fetchCorrelationMatrix]);
 
   const addCoin = () => {
     if (newCoin && !coins.includes(newCoin)) {
@@ -59,10 +38,10 @@ function App() {
   };
 
   const getCorrelationColor = (value) => {
-    if (value >= 0.8) return '#22c55e'; // Green - strong
-    if (value >= 0.5) return '#eab308'; // Yellow - moderate
-    if (value >= 0) return '#f97316';   // Orange - weak
-    return '#ef4444';                    // Red - negative
+    if (value >= 0.8) return '#22c55e';
+    if (value >= 0.5) return '#eab308';
+    if (value >= 0) return '#f97316';
+    return '#ef4444';
   };
 
   return (
