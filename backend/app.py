@@ -439,37 +439,66 @@ def get_available_coins():
             "count": len(COIN_SYMBOLS)
         }
 
+# Cache for Bitget coins list
+_bitget_coins_cache = {
+    "coins": [],
+    "last_fetched": None
+}
+
+def get_bitget_coins_list() -> List[str]:
+    """Fetch and cache coins list from Bitget API"""
+    import time
+    
+    # Check cache (refresh every 5 minutes)
+    if _bitget_coins_cache["coins"] and _bitget_coins_cache["last_fetched"]:
+        if time.time() - _bitget_coins_cache["last_fetched"] < 300:
+            return _bitget_coins_cache["coins"]
+    
+    try:
+        url = f"{BITGET_API}/api/v2/spot/public/coins"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("code") == "00000" and data.get("data"):
+                coins_data = data.get("data", [])
+                available_coins = []
+                
+                for coin in coins_data:
+                    coin_id = coin.get("coinId", "").lower()
+                    if coin_id:
+                        available_coins.append(coin_id)
+                        # Update symbol mapping
+                        symbol = f"{coin_id.upper()}USDT"
+                        if coin_id not in COIN_SYMBOLS:
+                            COIN_SYMBOLS[coin_id] = symbol
+                
+                _bitget_coins_cache["coins"] = available_coins
+                _bitget_coins_cache["last_fetched"] = time.time()
+                return available_coins
+    except Exception as e:
+        print(f"Error fetching Bitget coins: {e}")
+    
+    # Fallback to static list
+    return list(COIN_SYMBOLS.keys())
+
 @app.get("/api/search")
 def search_coins(query: str = ""):
     """
-    Search coins with recommendations like Google
+    Search coins with recommendations from Bitget
     Example: /api/search?query=ste
     """
     query = query.lower().strip()
     
-    if not query:
-        return {
-            "query": query,
-            "exact_match": None,
-            "recommendations": list(COIN_SYMBOLS.keys())[:10],
-            "categories": {
-                "popular": ["bitcoin", "ethereum", "solana", "cardano", "polkadot"],
-                "defi": ["uniswap", "aave", "compound", "maker"],
-                "layer1": ["ethereum", "solana", "avalanche", "near", "aptos"]
-            }
-        }
+    # Get coins from Bitget
+    bitget_coins = get_bitget_coins_list()
     
-    # Find exact or partial matches
-    exact_matches = []
-    partial_matches = []
-    
-    for coin_id in COIN_SYMBOLS.keys():
-        if coin_id == query:
-            exact_matches.append(coin_id)
-        elif query in coin_id:
-            partial_matches.append(coin_id)
-    
-    # Also check by common names
+    # Common symbol to name mapping
     common_names = {
         "btc": "bitcoin",
         "eth": "ethereum", 
@@ -489,13 +518,58 @@ def search_coins(query: str = ""):
         "shib": "shiba-inu",
         "trx": "tron",
         "ltc": "litecoin",
+        "apt": "aptos",
+        "arb": "arbitrum",
+        "op": "optimism",
+        "near": "near",
+        "sui": "sui",
+        "sei": "sei",
+        "inj": "injective",
+        "fet": "fetch-ai",
+        "wld": "worldcoin",
+        "blur": "blur",
+        "pepe": "pepe",
     }
     
+    if not query:
+        # Return popular coins from Bitget when no query
+        popular = ["bitcoin", "ethereum", "solana", "cardano", "polkadot"]
+        bitget_recommended = [c for c in bitget_coins if c not in popular][:10]
+        
+        return {
+            "query": query,
+            "exact_match": None,
+            "recommendations": popular + bitget_recommended[:5],
+            "categories": {
+                "popular": popular,
+                "bitget_recommended": bitget_recommended[:10],
+                "defi": ["uniswap", "aave", "compound", "maker"],
+                "layer1": ["ethereum", "solana", "avalanche", "near", "aptos"]
+            },
+            "source": "bitget"
+        }
+    
+    # Find exact or partial matches from Bitget coins
+    exact_matches = []
+    partial_matches = []
+    
+    for coin_id in bitget_coins:
+        if coin_id == query:
+            exact_matches.append(coin_id)
+        elif query in coin_id:
+            partial_matches.append(coin_id)
+    
+    # Also check by common names/symbols
     if query in common_names:
-        exact_matches.append(common_names[query])
+        mapped_coin = common_names[query]
+        if mapped_coin not in exact_matches:
+            exact_matches.insert(0, mapped_coin)
     
     # Remove duplicates and combine
     all_matches = list(dict.fromkeys(exact_matches + partial_matches))
+    
+    # Get additional recommendations from Bitget (coins not in matches)
+    bitget_recommended = [c for c in bitget_coins if c not in all_matches][:8]
     
     return {
         "query": query,
@@ -504,9 +578,10 @@ def search_coins(query: str = ""):
         "categories": {
             "exact_match": exact_matches[:3],
             "similar": partial_matches[:5],
+            "bitget_recommended": bitget_recommended,
             "popular": ["bitcoin", "ethereum", "solana"],
-            "may_related": [c for c in COIN_SYMBOLS.keys() if c not in all_matches][:5]
-        }
+        },
+        "source": "bitget"
     }
 
 @app.get("/")
