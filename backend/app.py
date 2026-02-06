@@ -379,55 +379,14 @@ def calculate_beta(coin_returns: List[float], btc_returns: List[float]) -> float
 @app.get("/api/coins")
 def get_available_coins():
     """
-    Get list of available coins from Bitget
+    Get list of available coins
     """
-    try:
-        url = f"{BITGET_API}/api/v2/spot/public/coins"
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code != 200:
-            # Fallback to static list if API fails
-            return {
-                "coins": list(COIN_SYMBOLS.keys()),
-                "source": "static_fallback",
-                "count": len(COIN_SYMBOLS)
-            }
-        
-        data = response.json()
-        if data.get("code") != "00000":
-            return {
-                "coins": list(COIN_SYMBOLS.keys()),
-                "source": "static_fallback",
-                "count": len(COIN_SYMBOLS)
-            }
-        
-        # Parse coins from Bitget
-        coins_data = data.get("data", [])
-        available_coins = []
-        
-        for coin in coins_data:
-            coin_name = coin.get("coinName", "").lower()
-            coin_id = coin.get("coinId", "").lower()
-            if coin_name and coin_id:
-                # Add to our mapping if not exists
-                symbol = f"{coin_id.upper()}USDT"
-                if coin_id not in COIN_SYMBOLS:
-                    COIN_SYMBOLS[coin_id] = symbol
-                available_coins.append(coin_id)
-        
-        return {
-            "coins": available_coins[:100],  # Limit to top 100
-            "source": "bitget_api",
-            "count": len(available_coins)
-        }
-        
-    except Exception as e:
-        # Fallback to static list
-        return {
-            "coins": list(COIN_SYMBOLS.keys()),
-            "source": "static_fallback",
-            "count": len(COIN_SYMBOLS)
-        }
+    # Return static list (reliable)
+    return {
+        "coins": list(COIN_SYMBOLS.keys()),
+        "source": "static_list",
+        "count": len(COIN_SYMBOLS)
+    }
 
 @app.get("/api/search")
 def search_coins(query: str = ""):

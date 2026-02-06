@@ -234,17 +234,16 @@ body {
 /* Suggestions Dropdown - Google Style */
 .suggestions-dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 8px);
   left: 0;
-  right: 80px;
+  right: 100px;
   background: var(--bg-dark);
   border: 1px solid var(--border);
   border-radius: 12px;
-  margin-top: 8px;
-  z-index: 9999 !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+  z-index: 99999 !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);
   overflow: hidden;
-  max-height: 400px;
+  max-height: 500px;
   overflow-y: auto;
 }
 
