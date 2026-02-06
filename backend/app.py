@@ -18,7 +18,13 @@ app.add_middleware(
 
 BITGET_API = "https://api.bitget.com"
 
-# Coin symbol mapping (coin_id -> Bitget symbol)
+# Cache for coins list
+_coins_cache = {
+    "coins": None,
+    "last_fetched": None
+}
+
+# Coin symbol mapping (coin_id -> Binance/Bitget symbol)
 COIN_SYMBOLS = {
     'bitcoin': 'BTCUSDT',
     'ethereum': 'ETHUSDT',
@@ -54,68 +60,156 @@ def get_bitget_symbol(coin_id: str) -> str:
     # Try common patterns
     return f"{coin_id.upper()}USDT"
 
-def get_historical_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fetch historical prices - Binance as primary"""
-    
-    # Try Binance first (most reliable)
+def get_binance_coins_list() -> List[Dict]:
+    """Fetch all available coins from Binance API"""
     try:
+        url = "https://api.binance.com/api/v3/exchangeInfo"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        
+        response = requests.get(url, headers=headers, timeout=20)
+        
+        if response.status_code == 200:
+            data = response.json()
+            symbols = data.get("symbols", [])
+            
+            # Filter USDT pairs that are actively trading
+            coins_set = set()
+            for symbol_info in symbols:
+                if (symbol_info.get("quoteAsset") == "USDT" and 
+                    symbol_info.get("status") == "TRADING"):
+                    base_asset = symbol_info.get("baseAsset", "").lower()
+                    if base_asset:
+                        coins_set.add(base_asset)
+            
+            # Convert to list with metadata
+            coins_list = []
+            for coin in sorted(coins_set):
+                # Map common symbols to readable names
+                coin_name = get_coin_display_name(coin)
+                coins_list.append({
+                    "id": coin,
+                    "symbol": coin.upper(),
+                    "name": coin_name
+                })
+            
+            print(f"✓ Loaded {len(coins_list)} coins from Binance")
+            return coins_list
+    except Exception as e:
+        print(f"Error fetching Binance coins: {e}")
+    
+    return []
+
+def get_coin_display_name(coin_id: str) -> str:
+    """Get display name for coin ID"""
+    # Comprehensive mapping of coin IDs to names
+    name_map = {
+        "btc": "Bitcoin",
+        "eth": "Ethereum",
+        "sol": "Solana",
+        "ada": "Cardano",
+        "dot": "Polkadot",
+        "avax": "Avalanche",
+        "matic": "Polygon",
+        "link": "Chainlink",
+        "xlm": "Stellar",
+        "atom": "Cosmos",
+        "algo": "Algorand",
+        "near": "NEAR Protocol",
+        "apt": "Aptos",
+        "sui": "Sui",
+        "arb": "Arbitrum",
+        "op": "Optimism",
+        "uni": "Uniswap",
+        "aave": "Aave",
+        "bnb": "BNB",
+        "xrp": "XRP",
+        "doge": "Dogecoin",
+        "shib": "Shiba Inu",
+        "trx": "TRON",
+        "ltc": "Litecoin",
+        "bch": "Bitcoin Cash",
+        "etc": "Ethereum Classic",
+        "xmr": "Monero",
+        "usdc": "USD Coin",
+        "usdt": "Tether",
+        "dai": "Dai",
+        "wbtc": "Wrapped Bitcoin",
+        "steth": "Lido Staked Ether",
+        "pepe": "Pepe",
+        "wif": "dogwifhat",
+        "bonk": "Bonk",
+        "inj": "Injective",
+        "sei": "Sei",
+        "tia": "Celestia",
+        "jto": "Jito",
+        "pyth": "Pyth Network",
+        "rune": "THORChain",
+        "ftm": "Fantom",
+        "one": "Harmony",
+        "vet": "VeChain",
+        "grt": "The Graph",
+        "sand": "The Sandbox",
+        "mana": "Decentraland",
+        "axs": "Axie Infinity",
+        "imx": "Immutable X",
+        "ape": "ApeCoin",
+        "ldo": "Lido DAO",
+        "mkr": "Maker",
+        "comp": "Compound",
+        "snx": "Synthetix",
+        "crv": "Curve DAO",
+        "1inch": "1inch",
+        "sushi": "SushiSwap",
+        "cake": "PancakeSwap",
+    }
+    
+    coin_lower = coin_id.lower()
+    if coin_lower in name_map:
+        return name_map[coin_lower]
+    
+    # Default: capitalize first letter
+    return coin_id.upper() if len(coin_id) <= 4 else coin_id.capitalize()
+
+def get_historical_prices(coin_id: str, days: int = 30) -> List[float]:
+    """Fetch historical prices with fallback order: Binance → CoinGecko → Bitget"""
+    
+    # 1. Try Binance first (most reliable, free)
+    try:
+        print(f"[1/3] Trying Binance for {coin_id}...")
         return get_binance_prices(coin_id, days)
     except Exception as e:
-        print(f"Binance failed: {e}")
+        print(f"❌ Binance failed: {e}")
     
-    # Fallback to CoinGecko
+    # 2. Fallback to CoinGecko
     try:
+        print(f"[2/3] Trying CoinGecko for {coin_id}...")
         return get_coingecko_prices(coin_id, days)
     except Exception as e:
-        print(f"CoinGecko failed: {e}")
+        print(f"❌ CoinGecko failed: {e}")
     
-    # Last resort - Bitget
+    # 3. Last resort - Bitget
     try:
+        print(f"[3/3] Trying Bitget for {coin_id}...")
         return get_bitget_prices(coin_id, days)
     except Exception as e:
-        print(f"Bitget failed: {e}")
+        print(f"❌ Bitget failed: {e}")
         raise HTTPException(
             status_code=400, 
-            detail=f"Failed to fetch data for {coin_id} from all sources"
+            detail=f"Failed to fetch data for {coin_id} from all sources (Binance, CoinGecko, Bitget)"
         )
 
 def get_binance_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Primary: Binance API"""
-    # Map coin_id to Binance symbol
-    symbol_map = {
-        'bitcoin': 'BTCUSDT',
-        'ethereum': 'ETHUSDT',
-        'solana': 'SOLUSDT',
-        'cardano': 'ADAUSDT',
-        'polkadot': 'DOTUSDT',
-        'avalanche': 'AVAXUSDT',
-        'polygon': 'MATICUSDT',
-        'chainlink': 'LINKUSDT',
-        'stellar': 'XLMUSDT',
-        'cosmos': 'ATOMUSDT',
-        'algorand': 'ALGOUSDT',
-        'near': 'NEARUSDT',
-        'aptos': 'APTUSDT',
-        'sui': 'SUIUSDT',
-        'arbitrum': 'ARBUSDT',
-        'optimism': 'OPUSDT',
-        'uniswap': 'UNIUSDT',
-        'aave': 'AAVEUSDT',
-        'binancecoin': 'BNBUSDT',
-        'ripple': 'XRPUSDT',
-        'dogecoin': 'DOGEUSDT',
-        'shiba-inu': 'SHIBUSDT',
-        'tron': 'TRXUSDT',
-        'litecoin': 'LTCUSDT',
-    }
+    """Primary source: Binance API"""
+    # Build symbol - try direct uppercase first
+    symbol = f"{coin_id.upper()}USDT"
     
-    symbol = symbol_map.get(coin_id.lower())
-    if not symbol:
-        raise Exception(f"Unknown coin: {coin_id}")
+    # Check if we have a custom mapping
+    if coin_id.lower() in COIN_SYMBOLS:
+        symbol = COIN_SYMBOLS[coin_id.lower()]
     
     url = "https://api.binance.com/api/v3/klines"
-    
-    # Calculate start time (milliseconds)
     end_time = int(datetime.now().timestamp() * 1000)
     start_time = end_time - (days * 24 * 60 * 60 * 1000)
     
@@ -131,23 +225,22 @@ def get_binance_prices(coin_id: str, days: int = 30) -> List[float]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    response = requests.get(url, params=params, headers=headers, timeout=10)
-    
-    print(f"Binance API: {symbol}, Status: {response.status_code}")
+    response = requests.get(url, params=params, headers=headers, timeout=20)
+    print(f"✓ Binance: {symbol} - Status {response.status_code}")
     
     if response.status_code != 200:
-        raise Exception(f"Binance error: {response.status_code}")
+        raise Exception(f"HTTP {response.status_code}")
     
     data = response.json()
     if not data:
-        raise Exception("No data from Binance")
+        raise Exception("Empty response")
     
     # Binance klines: [openTime, open, high, low, close, volume, ...]
-    prices = [float(candle[4]) for candle in data]  # Close price
+    prices = [float(candle[4]) for candle in data]
     return prices
 
 def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fallback 1: CoinGecko API"""
+    """Fallback #2: CoinGecko API"""
     COINGECKO_API = "https://api.coingecko.com/api/v3"
     url = f"{COINGECKO_API}/coins/{coin_id}/market_chart"
     params = {
@@ -160,32 +253,29 @@ def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    response = requests.get(url, params=params, headers=headers, timeout=10)
-    
-    print(f"CoinGecko API: {coin_id}, Status: {response.status_code}")
+    response = requests.get(url, params=params, headers=headers, timeout=20)
+    print(f"✓ CoinGecko: {coin_id} - Status {response.status_code}")
     
     if response.status_code != 200:
-        raise Exception(f"CoinGecko error: {response.status_code}")
+        raise Exception(f"HTTP {response.status_code}")
     
     data = response.json()
     prices = [price[1] for price in data["prices"]]
     return prices
 
 def get_bitget_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fallback 2: Bitget API V2"""
+    """Fallback #3: Bitget API V2"""
     symbol = COIN_SYMBOLS.get(coin_id.lower())
     if not symbol:
-        raise Exception(f"Unknown coin for Bitget: {coin_id}")
+        raise Exception(f"Coin not supported on Bitget: {coin_id}")
     
-    # Bitget V2 API endpoint
     url = f"{BITGET_API}/api/v2/spot/market/candles"
-    
     end_time = int(datetime.now().timestamp() * 1000)
     start_time = end_time - (days * 24 * 60 * 60 * 1000)
     
     params = {
         "symbol": symbol,
-        "granularity": "1D",  # V2 uses granularity, not period
+        "granularity": "1D",
         "startTime": str(start_time),
         "endTime": str(end_time),
         "limit": str(days)
@@ -197,130 +287,24 @@ def get_bitget_prices(coin_id: str, days: int = 30) -> List[float]:
         "Content-Type": "application/json"
     }
     
-    response = requests.get(url, params=params, headers=headers, timeout=10)
-    
-    print(f"Bitget V2 API: {symbol}, Status: {response.status_code}")
+    response = requests.get(url, params=params, headers=headers, timeout=20)
+    print(f"✓ Bitget: {symbol} - Status {response.status_code}")
     
     if response.status_code != 200:
-        raise Exception(f"Bitget error: {response.status_code}")
+        raise Exception(f"HTTP {response.status_code}")
     
     data = response.json()
     if data.get("code") != "00000":
-        raise Exception(f"Bitget API error: {data.get('msg')}")
+        raise Exception(f"API error: {data.get('msg')}")
     
     candles = data.get("data", [])
     if not candles:
-        raise Exception("No data from Bitget")
+        raise Exception("Empty response")
     
-    # Bitget V2 candles format: [timestamp, open, high, low, close, volume, quoteVolume]
-    prices = [float(candle[4]) for candle in candles]  # Close price
+    # Bitget V2 format: [timestamp, open, high, low, close, volume, quoteVolume]
+    prices = [float(candle[4]) for candle in candles]
     prices.reverse()  # Oldest first
     return prices
-
-def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fallback to CoinGecko API"""
-    COINGECKO_API = "https://api.coingecko.com/api/v3"
-    url = f"{COINGECKO_API}/coins/{coin_id}/market_chart"
-    params = {
-        "vs_currency": "usd",
-        "days": days,
-        "interval": "daily"
-    }
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        
-        print(f"CoinGecko API Request: {url}")
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code == 429:
-            # Rate limited - try Binance
-            print("CoinGecko rate limited, trying Binance...")
-            return get_binance_prices(coin_id, days)
-        
-        if response.status_code != 200:
-            return get_binance_prices(coin_id, days)
-        
-        data = response.json()
-        prices = [price[1] for price in data["prices"]]
-        return prices
-    except Exception as e:
-        print(f"CoinGecko error: {e}")
-        return get_binance_prices(coin_id, days)
-
-def get_binance_prices(coin_id: str, days: int = 30) -> List[float]:
-    """Fallback to Binance API"""
-    # Map coin_id to Binance symbol
-    symbol_map = {
-        'bitcoin': 'BTCUSDT',
-        'ethereum': 'ETHUSDT',
-        'solana': 'SOLUSDT',
-        'cardano': 'ADAUSDT',
-        'polkadot': 'DOTUSDT',
-        'avalanche': 'AVAXUSDT',
-        'polygon': 'MATICUSDT',
-        'chainlink': 'LINKUSDT',
-        'stellar': 'XLMUSDT',
-        'cosmos': 'ATOMUSDT',
-        'algorand': 'ALGOUSDT',
-        'near': 'NEARUSDT',
-        'aptos': 'APTUSDT',
-        'sui': 'SUIUSDT',
-        'arbitrum': 'ARBUSDT',
-        'optimism': 'OPUSDT',
-        'uniswap': 'UNIUSDT',
-        'aave': 'AAVEUSDT',
-        'binancecoin': 'BNBUSDT',
-        'ripple': 'XRPUSDT',
-        'dogecoin': 'DOGEUSDT',
-        'shiba-inu': 'SHIBUSDT',
-        'tron': 'TRXUSDT',
-        'litecoin': 'LTCUSDT',
-    }
-    
-    symbol = symbol_map.get(coin_id.lower(), f"{coin_id.upper()}USDT")
-    
-    url = "https://api.binance.com/api/v3/klines"
-    
-    # Calculate start time
-    end_time = int(datetime.now().timestamp() * 1000)
-    start_time = end_time - (days * 24 * 60 * 60 * 1000)
-    
-    params = {
-        "symbol": symbol,
-        "interval": "1d",
-        "startTime": start_time,
-        "endTime": end_time,
-        "limit": days
-    }
-    
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        
-        print(f"Binance API Request: {url}")
-        print(f"Symbol: {symbol}")
-        print(f"Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Failed to fetch data for {coin_id} from all sources (Bitget, CoinGecko, Binance)"
-            )
-        
-        data = response.json()
-        # Binance klines: [openTime, open, high, low, close, volume, ...]
-        prices = [float(candle[4]) for candle in data]  # Close price
-        return prices
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Failed to fetch data for {coin_id}: {str(e)}"
-        )
 
 def calculate_returns(prices: List[float]) -> List[float]:
     """Calculate percentage returns"""
@@ -461,7 +445,7 @@ def get_bitget_coins_list() -> List[str]:
             "Accept": "application/json"
         }
         
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=20)
         
         if response.status_code == 200:
             data = response.json()
@@ -495,101 +479,104 @@ def get_bitget_coins_list() -> List[str]:
     # Fallback to static list
     return list(COIN_SYMBOLS.keys())
 
+@app.get("/api/coins/all")
+def get_all_coins():
+    """
+    Get complete list of all available coins with metadata
+    Cached for 1 hour - frontend will search client-side
+    """
+    import time
+    
+    # Check cache (refresh every 1 hour)
+    if _coins_cache["coins"] and _coins_cache["last_fetched"]:
+        if time.time() - _coins_cache["last_fetched"] < 3600:
+            return {
+                "coins": _coins_cache["coins"],
+                "total": len(_coins_cache["coins"]),
+                "cache_duration": 3600,
+                "source": "cache"
+            }
+    
+    # Try Binance first (most reliable and comprehensive)
+    binance_coins = get_binance_coins_list()
+    
+    if binance_coins:
+        # Add category metadata
+        for coin in binance_coins:
+            coin["category"] = get_coin_category(coin["id"])
+        
+        _coins_cache["coins"] = binance_coins
+        _coins_cache["last_fetched"] = time.time()
+        
+        return {
+            "coins": binance_coins,
+            "total": len(binance_coins),
+            "cache_duration": 3600,
+            "source": "binance"
+        }
+    
+    # Fallback to static list if Binance fails
+    print("Binance coins fetch failed, using static list")
+    static_coins = []
+    for coin_id in COIN_SYMBOLS.keys():
+        static_coins.append({
+            "id": coin_id,
+            "name": get_coin_display_name(coin_id),
+            "symbol": coin_id.upper(),
+            "category": get_coin_category(coin_id)
+        })
+    
+    return {
+        "coins": static_coins,
+        "total": len(static_coins),
+        "cache_duration": 3600,
+        "source": "static"
+    }
+
+def get_coin_category(coin_id: str) -> str:
+    """Categorize coins"""
+    layer1 = ["btc", "eth", "sol", "ada", "avax", "algo", "near", "apt", "sui", "trx", "ftm", "one"]
+    layer2 = ["matic", "arb", "op", "imx"]
+    layer0 = ["dot", "atom"]
+    defi = ["uni", "aave", "mkr", "comp", "snx", "crv", "1inch", "sushi", "cake", "ldo"]
+    oracle = ["link", "pyth"]
+    payment = ["xlm", "xrp", "ltc", "bch"]
+    meme = ["doge", "shib", "pepe", "wif", "bonk"]
+    stablecoin = ["usdc", "usdt", "dai"]
+    
+    coin_lower = coin_id.lower()
+    if coin_lower in layer1:
+        return "Layer 1"
+    elif coin_lower in layer2:
+        return "Layer 2"
+    elif coin_lower in layer0:
+        return "Layer 0"
+    elif coin_lower in defi:
+        return "DeFi"
+    elif coin_lower in oracle:
+        return "Oracle"
+    elif coin_lower in payment:
+        return "Payment"
+    elif coin_lower in meme:
+        return "Meme"
+    elif coin_lower in stablecoin:
+        return "Stablecoin"
+    else:
+        return "Other"
+
 @app.get("/api/search")
 def search_coins(query: str = ""):
     """
-    Search coins with recommendations from Bitget
-    Example: /api/search?query=ste
+    DEPRECATED: Use /api/coins/all instead and search client-side
+    Kept for backward compatibility
     """
-    query = query.lower().strip()
-    
-    # Get coins from Bitget
     bitget_coins = get_bitget_coins_list()
-    
-    # Common symbol to name mapping
-    common_names = {
-        "btc": "bitcoin",
-        "eth": "ethereum", 
-        "sol": "solana",
-        "ada": "cardano",
-        "dot": "polkadot",
-        "avax": "avalanche",
-        "matic": "polygon",
-        "link": "chainlink",
-        "xlm": "stellar",
-        "atom": "cosmos",
-        "uni": "uniswap",
-        "aave": "aave",
-        "bnb": "binancecoin",
-        "xrp": "ripple",
-        "doge": "dogecoin",
-        "shib": "shiba-inu",
-        "trx": "tron",
-        "ltc": "litecoin",
-        "apt": "aptos",
-        "arb": "arbitrum",
-        "op": "optimism",
-        "near": "near",
-        "sui": "sui",
-        "sei": "sei",
-        "inj": "injective",
-        "fet": "fetch-ai",
-        "wld": "worldcoin",
-        "blur": "blur",
-        "pepe": "pepe",
-    }
-    
-    if not query:
-        # Return popular coins from Bitget when no query
-        popular = ["bitcoin", "ethereum", "solana", "cardano", "polkadot"]
-        bitget_recommended = [c for c in bitget_coins if c not in popular][:10]
-        
-        return {
-            "query": query,
-            "exact_match": None,
-            "recommendations": popular + bitget_recommended[:5],
-            "categories": {
-                "popular": popular,
-                "bitget_recommended": bitget_recommended[:10],
-                "defi": ["uniswap", "aave", "compound", "maker"],
-                "layer1": ["ethereum", "solana", "avalanche", "near", "aptos"]
-            },
-            "source": "bitget"
-        }
-    
-    # Find exact or partial matches from Bitget coins
-    exact_matches = []
-    partial_matches = []
-    
-    for coin_id in bitget_coins:
-        if coin_id == query:
-            exact_matches.append(coin_id)
-        elif query in coin_id:
-            partial_matches.append(coin_id)
-    
-    # Also check by common names/symbols
-    if query in common_names:
-        mapped_coin = common_names[query]
-        if mapped_coin not in exact_matches:
-            exact_matches.insert(0, mapped_coin)
-    
-    # Remove duplicates and combine
-    all_matches = list(dict.fromkeys(exact_matches + partial_matches))
-    
-    # Get additional recommendations from Bitget (coins not in matches)
-    bitget_recommended = [c for c in bitget_coins if c not in all_matches][:8]
     
     return {
         "query": query,
-        "exact_match": exact_matches[0] if exact_matches else None,
-        "recommendations": all_matches[:10],
-        "categories": {
-            "exact_match": exact_matches[:3],
-            "similar": partial_matches[:5],
-            "bitget_recommended": bitget_recommended,
-            "popular": ["bitcoin", "ethereum", "solana"],
-        },
-        "source": "bitget"
+        "recommendations": bitget_coins[:20],
+        "deprecated": True,
+        "message": "Please use /api/coins/all and implement client-side search"
     }
 
 @app.get("/")

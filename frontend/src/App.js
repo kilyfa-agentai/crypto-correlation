@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import "./App.css";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
@@ -8,72 +8,39 @@ function App() {
   const [days, setDays] = useState(30);
   const [matrix, setMatrix] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [newCoin, setNewCoin] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [error, setError] = useState(null);
-  const [showCoinList, setShowCoinList] = useState(false);
-  const [allCoins, setAllCoins] = useState([]);
-  const [searchResults, setSearchResults] = useState(null);
-  const searchRef = useRef(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [allCoins, setAllCoins] = useState([]); // Cache all coins here
 
-  // Fetch all available coins on mount
+  // Fetch ALL coins once on mount
   useEffect(() => {
-    const fetchCoins = async () => {
+    const fetchAllCoins = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/coins`);
+        const response = await fetch(`${API_URL}/api/coins/all`);
         const data = await response.json();
-        const coins = data.coins || [];
-        setAllCoins(coins);
-        console.log(`Loaded ${coins.length} coins from ${data.source}`);
+        setAllCoins(data.coins || []);
+        console.log(`✓ Loaded ${data.total} coins from cache`);
       } catch (err) {
-        console.error("Failed to fetch coins:", err);
-        // Fallback to extended list
-        setAllCoins([
-          "bitcoin",
-          "ethereum",
-          "solana",
-          "cardano",
-          "polkadot",
-          "avalanche",
-          "polygon",
-          "chainlink",
-          "stellar",
-          "cosmos",
-          "algorand",
-          "near",
-          "aptos",
-          "sui",
-          "arbitrum",
-          "optimism",
-          "uniswap",
-          "aave",
-          "binancecoin",
-          "ripple",
-          "dogecoin",
-          "shiba-inu",
-          "tron",
-          "litecoin",
-        ]);
+        console.error("Failed to load coins:", err);
+        // Fallback to empty array
+        setAllCoins([]);
       }
     };
-    fetchCoins();
-  }, []);
+    fetchAllCoins();
+  }, []); // Only run once on mount
 
   const fetchCorrelationMatrix = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch(`${API_URL}/api/correlation-matrix?coins=${coins.join(",")}&days=${days}`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to fetch data");
-      }
+      if (!response.ok) throw new Error("Failed to fetch data");
       const data = await response.json();
       setMatrix(data.matrix);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setError(error.message || "Network error. Please check your connection.");
+    } catch (err) {
+      setError(err.message);
     }
     setLoading(false);
   }, [coins, days]);
@@ -82,85 +49,46 @@ function App() {
     fetchCorrelationMatrix();
   }, [fetchCorrelationMatrix]);
 
-  // Google-style search with API
+  // Client-side search - NO API CALLS!
   useEffect(() => {
-    const fetchSearchResults = async () => {
-      if (newCoin.length > 0) {
-        try {
-          const response = await fetch(`${API_URL}/api/search?query=${encodeURIComponent(newCoin)}`);
-          const data = await response.json();
-          setSearchResults(data);
+    if (searchTerm.length >= 2 && allCoins.length > 0) {
+      const query = searchTerm.toLowerCase();
 
-          // Combine all recommendations
-          const allSuggestions = [...(data.categories?.exact_match || []), ...(data.categories?.similar || []), ...(data.recommendations || [])];
+      // Search in id, name, and symbol
+      const matches = allCoins
+        .filter((coin) => {
+          const id = coin.id.toLowerCase();
+          const name = coin.name.toLowerCase();
+          const symbol = coin.symbol.toLowerCase();
 
-          // Remove duplicates and already selected coins
-          const uniqueSuggestions = [...new Set(allSuggestions)].filter((coin) => !coins.includes(coin)).slice(0, 8);
+          return id.includes(query) || name.includes(query) || symbol.includes(query);
+        })
+        .filter((coin) => !coins.includes(coin.id)) // Exclude already selected
+        .slice(0, 10); // Limit to 10 results
 
-          setSuggestions(uniqueSuggestions);
-          setShowSuggestions(uniqueSuggestions.length > 0);
-        } catch (err) {
-          // Fallback to local filtering
-          const filtered = allCoins
-            .filter((coin) => coin.toLowerCase().includes(newCoin.toLowerCase()))
-            .filter((coin) => !coins.includes(coin))
-            .slice(0, 8);
-          setSuggestions(filtered);
-          setShowSuggestions(filtered.length > 0);
-        }
-      } else {
-        setSuggestions([]);
-        setShowSuggestions(false);
-        setSearchResults(null);
-      }
-    };
+      // Format for display
+      const formattedSuggestions = matches.map((coin) => ({
+        id: coin.id,
+        name: coin.name,
+        symbol: coin.symbol,
+        category: coin.category,
+      }));
 
-    const timeoutId = setTimeout(fetchSearchResults, 300); // Debounce 300ms
-    return () => clearTimeout(timeoutId);
-  }, [newCoin, allCoins, coins]);
-
-  // Close suggestions when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
-        setShowSuggestions(false);
-        setShowCoinList(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+      setSuggestions(formattedSuggestions);
+      setShowSuggestions(true);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [searchTerm, coins, allCoins]); // Re-run when searchTerm changes
 
   const addCoin = (coin) => {
-    let targetCoin = coin;
-
-    // If entered via keyboard/button without specific coin, find best match
-    if (!targetCoin) {
-      if (searchResults?.exact_match) {
-        targetCoin = searchResults.exact_match;
-      } else if (suggestions.length > 0) {
-        // Prefer exact match from suggestions if available (e.g. typing "bitcoi")
-        const exactMatch = suggestions.find((s) => s.toLowerCase() === newCoin.toLowerCase());
-        targetCoin = exactMatch || suggestions[0];
-      } else {
-        targetCoin = newCoin;
-      }
-    }
-
-    if (!targetCoin) return;
-
-    const coinId = targetCoin.toLowerCase().trim();
-    if (!coinId) return;
-
-    if (coins.includes(coinId)) {
-      setError(`"${targetCoin}" is already in your list!`);
-      // Don't clear input on error so user can fix it
-    } else {
-      setCoins([...coins, coinId]);
-      setNewCoin("");
+    const coinId = typeof coin === "object" ? coin.id : coin || searchTerm;
+    if (coinId && !coins.includes(coinId.toLowerCase())) {
+      setCoins([...coins, coinId.toLowerCase()]);
+      setSearchTerm("");
+      setSuggestions([]);
       setShowSuggestions(false);
-      setSuggestions([]); // Clear suggestions
-      setSearchResults(null); // Clear search results
     }
   };
 
@@ -168,310 +96,171 @@ function App() {
     setCoins(coins.filter((c) => c !== coin));
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addCoin();
-    }
+  const getColor = (value) => {
+    if (value >= 0.7) return "#10b981";
+    if (value >= 0.4) return "#f59e0b";
+    if (value >= 0) return "#ef4444";
+    return "#dc2626";
   };
 
-  const getCorrelationColor = (value) => {
-    if (value >= 0.8) return "#10b981";
-    if (value >= 0.5) return "#f59e0b";
-    if (value >= 0) return "#f97316";
-    return "#ef4444";
-  };
-
-  const getCorrelationLabel = (value) => {
-    if (value >= 0.8) return "Strong";
-    if (value >= 0.5) return "Moderate";
+  const getLabel = (value) => {
+    if (value >= 0.7) return "Strong";
+    if (value >= 0.4) return "Moderate";
     if (value >= 0) return "Weak";
     return "Negative";
   };
 
   return (
-    <div className="App">
-      {/* Error Popup */}
+    <div className="app">
+      <header className="header">
+        <h1>Crypto Correlation Analyzer</h1>
+        <p>Analyze price correlations between cryptocurrencies</p>
+      </header>
+
       {error && (
-        <div className="error-overlay" onClick={() => setError(null)}>
-          <div className="error-popup" onClick={(e) => e.stopPropagation()}>
-            <div className="error-icon">⚠️</div>
-            <h3>Error</h3>
-            <p>{error}</p>
-            <button onClick={() => setError(null)}>Close</button>
-          </div>
+        <div className="alert alert-error" onClick={() => setError(null)}>
+          {error}
         </div>
       )}
 
-      {/* Hero Section */}
-      <header className="hero">
-        <div className="hero-content">
-          <h1>📊 Crypto Correlation Analyzer</h1>
-          <p className="subtitle">Discover how cryptocurrencies move together. Track correlations, analyze trends, and make smarter trading decisions.</p>
-        </div>
-        <div className="hero-stats">
-          <div className="stat">
-            <span className="stat-value">{coins.length}</span>
-            <span className="stat-label">Coins</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{days}d</span>
-            <span className="stat-label">Timeframe</span>
-          </div>
-        </div>
-      </header>
-
-      {/* Controls Section */}
-      <div className="controls-card">
-        <div className="search-section" ref={searchRef}>
-          <label className="section-label">🔍 Add Cryptocurrency</label>
-          <div className="google-search-wrapper">
-            <div className="google-search-container">
-              <svg className="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M9 17C13.4183 17 17 13.4183 17 9C17 4.58172 13.4183 1 9 1C4.58172 1 1 4.58172 1 9C1 13.4183 4.58172 17 9 17Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M19 19L14.65 14.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <input
-                type="text"
-                value={newCoin}
-                onChange={(e) => setNewCoin(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={() => newCoin.length === 0 && setShowCoinList(true)}
-                placeholder="Search cryptocurrency..."
-                className="google-search-input"
-              />
-              {newCoin && (
-                <button
-                  className="clear-btn"
-                  onClick={() => {
-                    setNewCoin("");
-                    setShowSuggestions(false);
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M10 10l5.09-5.09L10 10l5.09 5.09L10 10zm0 0L4.91 4.91 10 10l-5.09 5.09L10 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-              )}
-            </div>
-            <button onClick={() => addCoin()} className="google-add-btn" disabled={!newCoin}>
+      <div className="container">
+        <div className="control-panel">
+          <div className="search-box">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (suggestions.length > 0) {
+                    addCoin(suggestions[0]);
+                  } else {
+                    addCoin();
+                  }
+                }
+              }}
+              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              placeholder={allCoins.length === 0 ? "Loading coins..." : "Search cryptocurrency..."}
+              className="search-input"
+              disabled={allCoins.length === 0}
+            />
+            <button onClick={() => addCoin()} disabled={!searchTerm} className="btn-add">
               Add
             </button>
-          </div>
-
-          {/* Google-style Autocomplete Suggestions */}
-          {showSuggestions && (
-            <div className="suggestions-dropdown">
-              {searchResults?.categories?.exact_match && searchResults.categories.exact_match.length > 0 && (
-                <div className="suggestion-category">
-                  {searchResults.categories.exact_match
-                    .filter((coin) => !coins.includes(coin))
-                    .slice(0, 3)
-                    .map((coin) => (
-                      <div key={`exact-${coin}`} className="google-suggestion-item exact-match" onClick={() => addCoin(coin)}>
-                        <div className="suggestion-icon">🎯</div>
-                        <div className="suggestion-content">
-                          <div className="suggestion-title">
-                            <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
-                            <span className="exact-badge">Exact match</span>
-                          </div>
-                          <div className="suggestion-description">Cryptocurrency • Available on Bitget</div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-
-              {searchResults?.categories?.similar && searchResults.categories.similar.length > 0 && (
-                <div className="suggestion-category">
-                  {searchResults.categories.similar
-                    .filter((coin) => !coins.includes(coin))
-                    .slice(0, 5)
-                    .map((coin) => (
-                      <div key={`similar-${coin}`} className="google-suggestion-item" onClick={() => addCoin(coin)}>
-                        <div className="suggestion-icon">🪙</div>
-                        <div className="suggestion-content">
-                          <div className="suggestion-title">
-                            <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
-                          </div>
-                          <div className="suggestion-description">Cryptocurrency • Similar to your search</div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-
-              {suggestions.length > 0 && (!searchResults?.categories?.exact_match || searchResults.categories.exact_match.length === 0) && (!searchResults?.categories?.similar || searchResults.categories.similar.length === 0) && (
-                <div className="suggestion-category">
-                  {suggestions.slice(0, 5).map((coin) => (
-                    <div key={coin} className="google-suggestion-item" onClick={() => addCoin(coin)}>
-                      <div className="suggestion-icon">🔍</div>
-                      <div className="suggestion-content">
-                        <div className="suggestion-title">
-                          <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
-                        </div>
-                        <div className="suggestion-description">Cryptocurrency suggestion</div>
-                      </div>
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="suggestions">
+                {suggestions.map((suggestion) => (
+                  <div key={suggestion.id} className="suggestion-item" onClick={() => addCoin(suggestion)}>
+                    <div className="suggestion-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                      </svg>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Bitget Recommended */}
-              {searchResults?.categories?.bitget_recommended && searchResults.categories.bitget_recommended.length > 0 && (
-                <div className="suggestion-category">
-                  <div className="bitget-header">⚡ Recommended from Bitget</div>
-                  {searchResults.categories.bitget_recommended
-                    .filter((coin) => !coins.includes(coin))
-                    .slice(0, 5)
-                    .map((coin) => (
-                      <div key={`bitget-${coin}`} className="google-suggestion-item bitget-item" onClick={() => addCoin(coin)}>
-                        <div className="suggestion-icon bitget-icon">💎</div>
-                        <div className="suggestion-content">
-                          <div className="suggestion-title">
-                            <span className="coin-name-preview">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
-                            <span className="bitget-badge">Bitget</span>
-                          </div>
-                          <div className="suggestion-description">Popular on Bitget Exchange</div>
-                        </div>
+                    <div className="suggestion-content">
+                      <div className="suggestion-title">
+                        <span className="coin-name">{suggestion.name}</span>
+                        <span className="coin-symbol">({suggestion.symbol})</span>
                       </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Full Coin List */}
-          {showCoinList && (
-            <div className="suggestions-dropdown">
-              <div className="suggestions-header">📋 Available Coins ({allCoins.length})</div>
-              <div className="coin-grid">
-                {allCoins.map((coin) => (
-                  <div key={coin} className={`coin-chip ${coins.includes(coin) ? "selected" : ""}`} onClick={() => !coins.includes(coin) && addCoin(coin)}>
-                    {coin.charAt(0).toUpperCase() + coin.slice(1)}
+                      <div className="suggestion-category">{suggestion.category}</div>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Selected Coins */}
-        <div className="selected-coins">
-          <label className="section-label">✅ Selected Coins</label>
-          <div className="coin-tags">
+          <div className="selected-coins">
             {coins.map((coin) => (
-              <span key={coin} className="coin-tag">
-                <span className="tag-icon">🪙</span>
-                {coin.charAt(0).toUpperCase() + coin.slice(1)}
-                <button onClick={() => removeCoin(coin)} className="remove-btn">
+              <div key={coin} className="coin-badge">
+                {coin}
+                <button onClick={() => removeCoin(coin)} className="btn-remove">
                   ×
                 </button>
-              </span>
+              </div>
             ))}
           </div>
-        </div>
 
-        {/* Days Selector */}
-        <div className="days-section">
-          <label className="section-label">📅 Timeframe</label>
-          <div className="days-buttons">
-            {[7, 30, 90].map((d) => (
-              <button key={d} onClick={() => setDays(d)} className={`day-btn ${days === d ? "active" : ""}`}>
-                {d} Days
-              </button>
-            ))}
-          </div>
-          <button onClick={fetchCorrelationMatrix} disabled={loading} className="update-btn">
-            {loading ? (
-              <>
-                <span className="spinner">↻</span> Loading...
-              </>
-            ) : (
-              "🔄 Update Data"
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Correlation Matrix */}
-      {matrix && (
-        <div className="matrix-card">
-          <h2>📈 Correlation Matrix</h2>
-          <p className="matrix-description">Values range from -1 (opposite movement) to +1 (perfect correlation)</p>
-
-          <div className="matrix-table-wrapper">
-            <table className="matrix-table">
-              <thead>
-                <tr>
-                  <th>Coin</th>
-                  {coins.map((coin) => (
-                    <th key={coin}>{coin.charAt(0).toUpperCase() + coin.slice(1)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {coins.map((coinA) => (
-                  <tr key={coinA}>
-                    <td className="row-header">{coinA.charAt(0).toUpperCase() + coinA.slice(1)}</td>
-                    {coins.map((coinB) => {
-                      const value = matrix[coinA][coinB];
-                      return (
-                        <td
-                          key={`${coinA}-${coinB}`}
-                          className="matrix-cell"
-                          style={{
-                            backgroundColor: getCorrelationColor(value),
-                            color: value > 0.3 ? "white" : "#1f2937",
-                          }}
-                          title={`${getCorrelationLabel(value)} correlation: ${value.toFixed(3)}`}
-                        >
-                          <span className="cell-value">{value.toFixed(2)}</span>
-                          <span className="cell-label">{getCorrelationLabel(value)}</span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Legend */}
-          <div className="legend">
-            <h3>📊 Legend</h3>
-            <div className="legend-grid">
-              {[
-                { color: "#10b981", label: "Strong (0.8-1.0)", desc: "Move together" },
-                { color: "#f59e0b", label: "Moderate (0.5-0.8)", desc: "Somewhat related" },
-                { color: "#f97316", label: "Weak (0.0-0.5)", desc: "Weak relationship" },
-                { color: "#ef4444", label: "Negative (-1.0-0.0)", desc: "Opposite movement" },
-              ].map((item) => (
-                <div key={item.label} className="legend-item">
-                  <div className="legend-color" style={{ backgroundColor: item.color }}></div>
-                  <div className="legend-text">
-                    <strong>{item.label}</strong>
-                    <span>{item.desc}</span>
-                  </div>
-                </div>
+          <div className="timeframe">
+            <label>Timeframe:</label>
+            <div className="btn-group">
+              {[7, 30, 90].map((d) => (
+                <button key={d} onClick={() => setDays(d)} className={`btn-day ${days === d ? "active" : ""}`}>
+                  {d} days
+                </button>
               ))}
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Empty State */}
-      {!matrix && !loading && !error && (
-        <div className="empty-state">
-          <div className="empty-icon">📊</div>
-          <h3>No Data Yet</h3>
-          <p>Add coins and click "Update Data" to see correlation matrix</p>
+          <button onClick={fetchCorrelationMatrix} disabled={loading} className="btn-update">
+            {loading ? "Loading..." : "Update Data"}
+          </button>
         </div>
-      )}
 
-      {/* Footer */}
+        {matrix && (
+          <div className="matrix-container">
+            <h2>Correlation Matrix</h2>
+            <div className="matrix-wrapper">
+              <table className="matrix-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    {coins.map((coin) => (
+                      <th key={coin}>{coin}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {coins.map((coinA) => (
+                    <tr key={coinA}>
+                      <td className="row-label">{coinA}</td>
+                      {coins.map((coinB) => {
+                        const value = matrix[coinA]?.[coinB];
+                        // Handle missing data
+                        if (value === undefined || value === null) {
+                          return (
+                            <td key={`${coinA}-${coinB}`} className="matrix-cell matrix-cell-loading" title="Loading...">
+                              -
+                            </td>
+                          );
+                        }
+                        return (
+                          <td key={`${coinA}-${coinB}`} className="matrix-cell" style={{ backgroundColor: getColor(value) }} title={`${getLabel(value)}: ${value.toFixed(3)}`}>
+                            {value.toFixed(2)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="legend">
+              <div className="legend-item">
+                <span className="legend-color" style={{ backgroundColor: "#10b981" }}></span>
+                <span>Strong (0.7+)</span>
+              </div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ backgroundColor: "#f59e0b" }}></span>
+                <span>Moderate (0.4-0.7)</span>
+              </div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ backgroundColor: "#ef4444" }}></span>
+                <span>Weak (0-0.4)</span>
+              </div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ backgroundColor: "#dc2626" }}></span>
+                <span>Negative (&lt;0)</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <footer className="footer">
-        <p>📡 Data from CoinGecko API • Built with React + FastAPI</p>
+        <p>Data from CoinGecko API • Built with React + FastAPI</p>
       </footer>
     </div>
   );
