@@ -1,7 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+// Popular coins list for autocomplete
+const POPULAR_COINS = [
+  'bitcoin', 'ethereum', 'solana', 'cardano', 'polkadot', 'avalanche',
+  'polygon', 'chainlink', 'stellar', 'cosmos', 'algorand', 'near',
+  'aptos', 'sui', 'arbitrum', 'optimism', 'uniswap', 'aave',
+  'binancecoin', 'ripple', 'dogecoin', 'shiba-inu', 'tron', 'litecoin'
+];
 
 function App() {
   const [coins, setCoins] = useState(['bitcoin', 'ethereum', 'solana']);
@@ -9,15 +17,33 @@ function App() {
   const [matrix, setMatrix] = useState(null);
   const [loading, setLoading] = useState(false);
   const [newCoin, setNewCoin] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [error, setError] = useState(null);
+  const [coinList, setCoinList] = useState([]);
+  const [showCoinList, setShowCoinList] = useState(false);
+  const searchRef = useRef(null);
+
+  // Fetch available coins on mount
+  useEffect(() => {
+    // Using popular coins as initial list
+    setCoinList(POPULAR_COINS);
+  }, []);
 
   const fetchCorrelationMatrix = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await fetch(`${API_URL}/api/correlation-matrix?coins=${coins.join(',')}&days=${days}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to fetch data');
+      }
       const data = await response.json();
       setMatrix(data.matrix);
     } catch (error) {
       console.error('Error fetching data:', error);
+      setError(error.message || 'Network error. Please check your connection.');
     }
     setLoading(false);
   }, [coins, days]);
@@ -26,10 +52,39 @@ function App() {
     fetchCorrelationMatrix();
   }, [fetchCorrelationMatrix]);
 
-  const addCoin = () => {
-    if (newCoin && !coins.includes(newCoin)) {
-      setCoins([...coins, newCoin]);
+  // Autocomplete logic
+  useEffect(() => {
+    if (newCoin.length > 0) {
+      const filtered = POPULAR_COINS.filter(coin => 
+        coin.toLowerCase().includes(newCoin.toLowerCase())
+      ).slice(0, 5);
+      setSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [newCoin]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+        setShowCoinList(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const addCoin = (coin = newCoin) => {
+    if (coin && !coins.includes(coin.toLowerCase())) {
+      setCoins([...coins, coin.toLowerCase()]);
       setNewCoin('');
+      setShowSuggestions(false);
+    } else if (coins.includes(coin.toLowerCase())) {
+      setError(`"${coin}" is already in your list!`);
     }
   };
 
@@ -37,104 +92,241 @@ function App() {
     setCoins(coins.filter(c => c !== coin));
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      addCoin();
+    }
+  };
+
   const getCorrelationColor = (value) => {
-    if (value >= 0.8) return '#22c55e';
-    if (value >= 0.5) return '#eab308';
+    if (value >= 0.8) return '#10b981';
+    if (value >= 0.5) return '#f59e0b';
     if (value >= 0) return '#f97316';
     return '#ef4444';
   };
 
+  const getCorrelationLabel = (value) => {
+    if (value >= 0.8) return 'Strong';
+    if (value >= 0.5) return 'Moderate';
+    if (value >= 0) return 'Weak';
+    return 'Negative';
+  };
+
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>📊 Crypto Correlation Analyzer</h1>
-        <p>Track how cryptocurrencies move together</p>
+      {/* Error Popup */}
+      {error && (
+        <div className="error-overlay" onClick={() => setError(null)}>
+          <div className="error-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="error-icon">⚠️</div>
+            <h3>Error</h3>
+            <p>{error}</p>
+            <button onClick={() => setError(null)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Hero Section */}
+      <header className="hero">
+        <div className="hero-content">
+          <h1>📊 Crypto Correlation Analyzer</h1>
+          <p className="subtitle">
+            Discover how cryptocurrencies move together. 
+            Track correlations, analyze trends, and make smarter trading decisions.
+          </p>
+        </div>
+        <div className="hero-stats">
+          <div className="stat">
+            <span className="stat-value">{coins.length}</span>
+            <span className="stat-label">Coins</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">{days}d</span>
+            <span className="stat-label">Timeframe</span>
+          </div>
+        </div>
       </header>
 
-      <div className="controls">
-        <div className="coin-input">
-          <input
-            type="text"
-            value={newCoin}
-            onChange={(e) => setNewCoin(e.target.value)}
-            placeholder="Add coin (e.g., cardano)"
-          />
-          <button onClick={addCoin}>Add Coin</button>
+      {/* Controls Section */}
+      <div className="controls-card">
+        <div className="search-section" ref={searchRef}>
+          <label className="section-label">🔍 Add Cryptocurrency</label>
+          <div className="search-container">
+            <input
+              type="text"
+              value={newCoin}
+              onChange={(e) => setNewCoin(e.target.value)}
+              onKeyPress={handleKeyPress}
+              onFocus={() => newCoin.length === 0 && setShowCoinList(true)}
+              placeholder="Type to search (e.g., stellar, cardano)..."
+              className="search-input"
+            />
+            <button onClick={() => addCoin()} className="add-btn" disabled={!newCoin}>
+              + Add
+            </button>
+          </div>
+
+          {/* Autocomplete Suggestions */}
+          {showSuggestions && (
+            <div className="suggestions-dropdown">
+              <div className="suggestions-header">💡 Suggestions</div>
+              {suggestions.map(coin => (
+                <div 
+                  key={coin} 
+                  className="suggestion-item"
+                  onClick={() => addCoin(coin)}
+                >
+                  <span className="coin-icon">🪙</span>
+                  <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Full Coin List */}
+          {showCoinList && (
+            <div className="suggestions-dropdown">
+              <div className="suggestions-header">📋 Available Coins</div>
+              <div className="coin-grid">
+                {POPULAR_COINS.map(coin => (
+                  <div 
+                    key={coin} 
+                    className={`coin-chip ${coins.includes(coin) ? 'selected' : ''}`}
+                    onClick={() => !coins.includes(coin) && addCoin(coin)}
+                  >
+                    {coin}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="coin-list">
-          {coins.map(coin => (
-            <span key={coin} className="coin-tag">
-              {coin}
-              <button onClick={() => removeCoin(coin)}>×</button>
-            </span>
-          ))}
+        {/* Selected Coins */}
+        <div className="selected-coins">
+          <label className="section-label">✅ Selected Coins</label>
+          <div className="coin-tags">
+            {coins.map(coin => (
+              <span key={coin} className="coin-tag">
+                <span className="tag-icon">🪙</span>
+                {coin.charAt(0).toUpperCase() + coin.slice(1)}
+                <button onClick={() => removeCoin(coin)} className="remove-btn">×</button>
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div className="days-selector">
-          <label>Days: </label>
-          <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-            <option value={90}>90 days</option>
-          </select>
-          <button onClick={fetchCorrelationMatrix} disabled={loading}>
-            {loading ? 'Loading...' : 'Update'}
+        {/* Days Selector */}
+        <div className="days-section">
+          <label className="section-label">📅 Timeframe</label>
+          <div className="days-buttons">
+            {[7, 30, 90].map(d => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`day-btn ${days === d ? 'active' : ''}`}
+              >
+                {d} Days
+              </button>
+            ))}
+          </div>
+          <button onClick={fetchCorrelationMatrix} disabled={loading} className="update-btn">
+            {loading ? (
+              <>
+                <span className="spinner">↻</span> Loading...
+              </>
+            ) : (
+              '🔄 Update Data'
+            )}
           </button>
         </div>
       </div>
 
+      {/* Correlation Matrix */}
       {matrix && (
-        <div className="matrix-container">
-          <h2>Correlation Matrix</h2>
-          <table className="correlation-table">
-            <thead>
-              <tr>
-                <th>Coin</th>
-                {coins.map(coin => <th key={coin}>{coin}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {coins.map(coinA => (
-                <tr key={coinA}>
-                  <td><strong>{coinA}</strong></td>
-                  {coins.map(coinB => (
-                    <td
-                      key={`${coinA}-${coinB}`}
-                      style={{
-                        backgroundColor: getCorrelationColor(matrix[coinA][coinB]),
-                        color: matrix[coinA][coinB] > 0.5 ? 'white' : 'black'
-                      }}
-                    >
-                      {matrix[coinA][coinB].toFixed(2)}
-                    </td>
+        <div className="matrix-card">
+          <h2>📈 Correlation Matrix</h2>
+          <p className="matrix-description">
+            Values range from -1 (opposite movement) to +1 (perfect correlation)
+          </p>
+          
+          <div className="matrix-table-wrapper">
+            <table className="matrix-table">
+              <thead>
+                <tr>
+                  <th>Coin</th>
+                  {coins.map(coin => (
+                    <th key={coin}>
+                      {coin.charAt(0).toUpperCase() + coin.slice(1)}
+                    </th>
                   ))}
                 </tr>
+              </thead>
+              <tbody>
+                {coins.map(coinA => (
+                  <tr key={coinA}>
+                    <td className="row-header">
+                      {coinA.charAt(0).toUpperCase() + coinA.slice(1)}
+                    </td>
+                    {coins.map(coinB => {
+                      const value = matrix[coinA][coinB];
+                      return (
+                        <td
+                          key={`${coinA}-${coinB}`}
+                          className="matrix-cell"
+                          style={{
+                            backgroundColor: getCorrelationColor(value),
+                            color: value > 0.3 ? 'white' : '#1f2937'
+                          }}
+                          title={`${getCorrelationLabel(value)} correlation: ${value.toFixed(3)}`}
+                        >
+                          <span className="cell-value">{value.toFixed(2)}</span>
+                          <span className="cell-label">{getCorrelationLabel(value)}</span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Legend */}
+          <div className="legend">
+            <h3>📊 Legend</h3>
+            <div className="legend-grid">
+              {[
+                { color: '#10b981', label: 'Strong (0.8-1.0)', desc: 'Move together' },
+                { color: '#f59e0b', label: 'Moderate (0.5-0.8)', desc: 'Somewhat related' },
+                { color: '#f97316', label: 'Weak (0.0-0.5)', desc: 'Weak relationship' },
+                { color: '#ef4444', label: 'Negative (-1.0-0.0)', desc: 'Opposite movement' }
+              ].map(item => (
+                <div key={item.label} className="legend-item">
+                  <div className="legend-color" style={{ backgroundColor: item.color }}></div>
+                  <div className="legend-text">
+                    <strong>{item.label}</strong>
+                    <span>{item.desc}</span>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="legend">
-        <h3>Correlation Guide:</h3>
-        <div className="legend-item">
-          <span className="color-box" style={{background: '#22c55e'}}></span>
-          <span>Strong (0.8-1.0) - Move together</span>
+      {/* Empty State */}
+      {!matrix && !loading && !error && (
+        <div className="empty-state">
+          <div className="empty-icon">📊</div>
+          <h3>No Data Yet</h3>
+          <p>Add coins and click "Update Data" to see correlation matrix</p>
         </div>
-        <div className="legend-item">
-          <span className="color-box" style={{background: '#eab308'}}></span>
-          <span>Moderate (0.5-0.8) - Somewhat related</span>
-        </div>
-        <div className="legend-item">
-          <span className="color-box" style={{background: '#f97316'}}></span>
-          <span>Weak (0.0-0.5) - Weak relationship</span>
-        </div>
-        <div className="legend-item">
-          <span className="color-box" style={{background: '#ef4444'}}></span>
-          <span>Negative (-1.0-0.0) - Move opposite</span>
-        </div>
-      </div>
+      )}
+
+      {/* Footer */}
+      <footer className="footer">
+        <p>📡 Data from CoinGecko API • Built with React + FastAPI</p>
+      </footer>
     </div>
   );
 }
