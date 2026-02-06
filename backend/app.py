@@ -160,7 +160,128 @@ def calculate_beta(coin_returns: List[float], btc_returns: List[float]) -> float
     beta = covariance / btc_variance
     return round(beta, 4)
 
-@app.get("/")
+@app.get("/api/coins")
+def get_available_coins():
+    """
+    Get list of available coins from Bitget
+    """
+    try:
+        url = f"{BITGET_API}/api/v2/spot/public/coins"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            # Fallback to static list if API fails
+            return {
+                "coins": list(COIN_SYMBOLS.keys()),
+                "source": "static_fallback",
+                "count": len(COIN_SYMBOLS)
+            }
+        
+        data = response.json()
+        if data.get("code") != "00000":
+            return {
+                "coins": list(COIN_SYMBOLS.keys()),
+                "source": "static_fallback",
+                "count": len(COIN_SYMBOLS)
+            }
+        
+        # Parse coins from Bitget
+        coins_data = data.get("data", [])
+        available_coins = []
+        
+        for coin in coins_data:
+            coin_name = coin.get("coinName", "").lower()
+            coin_id = coin.get("coinId", "").lower()
+            if coin_name and coin_id:
+                # Add to our mapping if not exists
+                symbol = f"{coin_id.upper()}USDT"
+                if coin_id not in COIN_SYMBOLS:
+                    COIN_SYMBOLS[coin_id] = symbol
+                available_coins.append(coin_id)
+        
+        return {
+            "coins": available_coins[:100],  # Limit to top 100
+            "source": "bitget_api",
+            "count": len(available_coins)
+        }
+        
+    except Exception as e:
+        # Fallback to static list
+        return {
+            "coins": list(COIN_SYMBOLS.keys()),
+            "source": "static_fallback",
+            "count": len(COIN_SYMBOLS)
+        }
+
+@app.get("/api/search")
+def search_coins(query: str = ""):
+    """
+    Search coins with recommendations like Google
+    Example: /api/search?query=ste
+    """
+    query = query.lower().strip()
+    
+    if not query:
+        return {
+            "query": query,
+            "exact_match": None,
+            "recommendations": list(COIN_SYMBOLS.keys())[:10],
+            "categories": {
+                "popular": ["bitcoin", "ethereum", "solana", "cardano", "polkadot"],
+                "defi": ["uniswap", "aave", "compound", "maker"],
+                "layer1": ["ethereum", "solana", "avalanche", "near", "aptos"]
+            }
+        }
+    
+    # Find exact or partial matches
+    exact_matches = []
+    partial_matches = []
+    
+    for coin_id in COIN_SYMBOLS.keys():
+        if coin_id == query:
+            exact_matches.append(coin_id)
+        elif query in coin_id:
+            partial_matches.append(coin_id)
+    
+    # Also check by common names
+    common_names = {
+        "btc": "bitcoin",
+        "eth": "ethereum", 
+        "sol": "solana",
+        "ada": "cardano",
+        "dot": "polkadot",
+        "avax": "avalanche",
+        "matic": "polygon",
+        "link": "chainlink",
+        "xlm": "stellar",
+        "atom": "cosmos",
+        "uni": "uniswap",
+        "aave": "aave",
+        "bnb": "binancecoin",
+        "xrp": "ripple",
+        "doge": "dogecoin",
+        "shib": "shiba-inu",
+        "trx": "tron",
+        "ltc": "litecoin",
+    }
+    
+    if query in common_names:
+        exact_matches.append(common_names[query])
+    
+    # Remove duplicates and combine
+    all_matches = list(dict.fromkeys(exact_matches + partial_matches))
+    
+    return {
+        "query": query,
+        "exact_match": exact_matches[0] if exact_matches else None,
+        "recommendations": all_matches[:10],
+        "categories": {
+            "exact_match": exact_matches[:3],
+            "similar": partial_matches[:5],
+            "popular": ["bitcoin", "ethereum", "solana"],
+            "may_related": [c for c in COIN_SYMBOLS.keys() if c not in all_matches][:5]
+        }
+    }
 def root():
     return {"message": "Crypto Correlation API", "version": "1.0"}
 

@@ -21,7 +21,30 @@ function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [error, setError] = useState(null);
   const [showCoinList, setShowCoinList] = useState(false);
+  const [allCoins, setAllCoins] = useState([]);
+  const [searchResults, setSearchResults] = useState(null);
   const searchRef = useRef(null);
+
+  // Fetch all available coins on mount
+  useEffect(() => {
+    const fetchCoins = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/coins`);
+        const data = await response.json();
+        setAllCoins(data.coins || []);
+      } catch (err) {
+        console.error('Failed to fetch coins:', err);
+        // Fallback to default list
+        setAllCoins([
+          'bitcoin', 'ethereum', 'solana', 'cardano', 'polkadot', 'avalanche',
+          'polygon', 'chainlink', 'stellar', 'cosmos', 'algorand', 'near',
+          'aptos', 'sui', 'arbitrum', 'optimism', 'uniswap', 'aave',
+          'binancecoin', 'ripple', 'dogecoin', 'shiba-inu', 'tron', 'litecoin'
+        ]);
+      }
+    };
+    fetchCoins();
+  }, []);
 
   const fetchCorrelationMatrix = useCallback(async () => {
     setLoading(true);
@@ -45,19 +68,48 @@ function App() {
     fetchCorrelationMatrix();
   }, [fetchCorrelationMatrix]);
 
-  // Autocomplete logic
+  // Google-style search with API
   useEffect(() => {
-    if (newCoin.length > 0) {
-      const filtered = POPULAR_COINS.filter(coin => 
-        coin.toLowerCase().includes(newCoin.toLowerCase())
-      ).slice(0, 5);
-      setSuggestions(filtered);
-      setShowSuggestions(filtered.length > 0);
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    }
-  }, [newCoin]);
+    const fetchSearchResults = async () => {
+      if (newCoin.length > 0) {
+        try {
+          const response = await fetch(`${API_URL}/api/search?query=${encodeURIComponent(newCoin)}`);
+          const data = await response.json();
+          setSearchResults(data);
+          
+          // Combine all recommendations
+          const allSuggestions = [
+            ...(data.categories?.exact_match || []),
+            ...(data.categories?.similar || []),
+            ...(data.recommendations || [])
+          ];
+          
+          // Remove duplicates and already selected coins
+          const uniqueSuggestions = [...new Set(allSuggestions)]
+            .filter(coin => !coins.includes(coin))
+            .slice(0, 8);
+          
+          setSuggestions(uniqueSuggestions);
+          setShowSuggestions(uniqueSuggestions.length > 0);
+        } catch (err) {
+          // Fallback to local filtering
+          const filtered = allCoins
+            .filter(coin => coin.toLowerCase().includes(newCoin.toLowerCase()))
+            .filter(coin => !coins.includes(coin))
+            .slice(0, 8);
+          setSuggestions(filtered);
+          setShowSuggestions(filtered.length > 0);
+        }
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+        setSearchResults(null);
+      }
+    };
+
+    const timeoutId = setTimeout(fetchSearchResults, 300); // Debounce 300ms
+    return () => clearTimeout(timeoutId);
+  }, [newCoin, allCoins, coins]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -159,35 +211,72 @@ function App() {
             </button>
           </div>
 
-          {/* Autocomplete Suggestions */}
+          {/* Google-style Autocomplete Suggestions */}
           {showSuggestions && (
             <div className="suggestions-dropdown">
-              <div className="suggestions-header">💡 Suggestions</div>
-              {suggestions.map(coin => (
-                <div 
-                  key={coin} 
-                  className="suggestion-item"
-                  onClick={() => addCoin(coin)}
-                >
-                  <span className="coin-icon">🪙</span>
-                  <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+              {searchResults?.categories?.exact_match?.length > 0 && (
+                <div className="suggestion-category">
+                  <div className="category-label">🎯 Exact Match</div>
+                  {searchResults.categories.exact_match.slice(0, 3).map(coin => (
+                    <div 
+                      key={`exact-${coin}`} 
+                      className="suggestion-item exact-match"
+                      onClick={() => addCoin(coin)}
+                    >
+                      <span className="coin-icon">🎯</span>
+                      <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                      <span className="match-badge">Exact</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              
+              {searchResults?.categories?.similar?.length > 0 && (
+                <div className="suggestion-category">
+                  <div className="category-label">💡 Similar Results</div>
+                  {searchResults.categories.similar.map(coin => (
+                    <div 
+                      key={`similar-${coin}`} 
+                      className="suggestion-item"
+                      onClick={() => addCoin(coin)}
+                    >
+                      <span className="coin-icon">🪙</span>
+                      <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {suggestions.length > 0 && !searchResults?.categories?.exact_match?.length && (
+                <div className="suggestion-category">
+                  <div className="category-label">🔍 Suggestions</div>
+                  {suggestions.map(coin => (
+                    <div 
+                      key={coin} 
+                      className="suggestion-item"
+                      onClick={() => addCoin(coin)}
+                    >
+                      <span className="coin-icon">🪙</span>
+                      <span className="coin-name">{coin.charAt(0).toUpperCase() + coin.slice(1)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {/* Full Coin List */}
           {showCoinList && (
             <div className="suggestions-dropdown">
-              <div className="suggestions-header">📋 Available Coins</div>
+              <div className="suggestions-header">📋 Available Coins ({allCoins.length})</div>
               <div className="coin-grid">
-                {POPULAR_COINS.map(coin => (
+                {allCoins.map(coin => (
                   <div 
                     key={coin} 
                     className={`coin-chip ${coins.includes(coin) ? 'selected' : ''}`}
                     onClick={() => !coins.includes(coin) && addCoin(coin)}
                   >
-                    {coin}
+                    {coin.charAt(0).toUpperCase() + coin.slice(1)}
                   </div>
                 ))}
               </div>
