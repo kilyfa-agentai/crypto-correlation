@@ -5,6 +5,11 @@ import requests
 from datetime import datetime, timedelta
 from typing import List, Dict
 import os
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI(title="Crypto Correlation API")
 
@@ -15,6 +20,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Configure Gemini
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel(GEMINI_MODEL)
+else:
+    print("⚠️  GEMINI_API_KEY not found in .env file")
+    gemini_model = None
 
 BITGET_API = "https://api.bitget.com"
 
@@ -663,6 +679,108 @@ def get_beta_coefficient(coins: str = "ethereum,solana", days: int = 30):
         "betas": betas,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.post("/api/ai/insights")
+async def get_ai_insights(request: dict):
+    """
+    Get AI-powered insights about correlation data using Gemini
+    """
+    if not gemini_model:
+        raise HTTPException(
+            status_code=503,
+            detail="Gemini API is not configured. Please set GEMINI_API_KEY in .env file"
+        )
+    
+    try:
+        # Extract data from request
+        coins = request.get("coins", [])
+        matrix = request.get("matrix", {})
+        days = request.get("days", 30)
+        question = request.get("question", "")
+        
+        # Check if matrix has valid data
+        if not matrix or not coins:
+            return {
+                "insights": "⚠️ No correlation data available. Please select coins and wait for the correlation matrix to load.",
+                "model": GEMINI_MODEL,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Find highest and lowest correlations
+        correlations = []
+        for coin_a in coins:
+            if coin_a not in matrix:
+                continue
+            for coin_b in coins:
+                if coin_a >= coin_b:  # Skip self-correlation and duplicates
+                    continue
+                value = matrix.get(coin_a, {}).get(coin_b)
+                if value is not None:
+                    correlations.append({
+                        "pair": f"{coin_a} & {coin_b}",
+                        "value": value
+                    })
+        
+        if not correlations:
+            return {
+                "insights": "⚠️ Insufficient correlation data. The matrix is still loading or missing data for the selected coins.",
+                "model": GEMINI_MODEL,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Sort to find extremes
+        correlations_sorted = sorted(correlations, key=lambda x: x["value"], reverse=True)
+        highest = correlations_sorted[:3]
+        lowest = correlations_sorted[-3:]
+        
+        # Build context for AI
+        context = f"""
+You are a cryptocurrency market analyst expert. Analyze the following correlation matrix data:
+
+Coins analyzed: {', '.join(coins)}
+Time period: {days} days
+
+Highest correlations (coins moving together):
+{chr(10).join([f"- {c['pair']}: {c['value']:.3f}" for c in highest])}
+
+Lowest correlations (coins moving independently):
+{chr(10).join([f"- {c['pair']}: {c['value']:.3f}" for c in lowest])}
+
+Full Correlation Matrix: {matrix}
+
+"""
+        
+        if question:
+            # Handle specific questions about data availability
+            question_lower = question.lower()
+            if any(word in question_lower for word in ['lowest', 'terendah', 'minimum', 'least', 'weakest']):
+                context += f"\nUser Question: {question}\n"
+                context += f"Note: The lowest correlation pairs are listed above. If asking about the 'lowest correlation', explain what it means (negative or close to zero indicates independent price movements).\n"
+            else:
+                context += f"\nUser Question: {question}\n"
+        else:
+            context += """
+Please provide:
+1. Key insights about the correlations
+2. Which coins move together (high correlation) - explain implications
+3. Which coins move independently (low/negative correlation) - explain benefits
+4. Investment diversification recommendations based on these correlations
+5. Potential risk factors to consider
+
+Keep your response concise, actionable, and easy to understand for investors.
+"""
+        
+        # Generate AI response
+        response = gemini_model.generate_content(context)
+        
+        return {
+            "insights": response.text,
+            "model": GEMINI_MODEL,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
