@@ -160,6 +160,12 @@ body {
   box-shadow: var(--shadow);
 }
 
+.controls-card {
+  position: relative;
+  z-index: 10;
+  overflow: visible;
+}
+
 .section-label {
   display: block;
   font-size: 14px;
@@ -174,6 +180,7 @@ body {
 .search-section {
   position: relative;
   margin-bottom: 25px;
+  z-index: 100;
 }
 
 .search-container {
@@ -234,8 +241,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   margin-top: 8px;
-  z-index: 100;
-  box-shadow: var(--shadow);
+  z-index: 9999 !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
   overflow: hidden;
   max-height: 400px;
   overflow-y: auto;
