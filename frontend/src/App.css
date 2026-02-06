@@ -1,0 +1,156 @@
+.App {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.App-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.App-header h1 {
+  color: #1a1a2e;
+  margin-bottom: 10px;
+}
+
+.App-header p {
+  color: #666;
+}
+
+.controls {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 30px;
+}
+
+.coin-input {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.coin-input input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.coin-input button {
+  padding: 10px 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.coin-input button:hover {
+  background: #0056b3;
+}
+
+.coin-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.coin-tag {
+  background: #e3f2fd;
+  padding: 5px 10px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.coin-tag button {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.days-selector {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.days-selector select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.days-selector button {
+  padding: 10px 20px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.days-selector button:disabled {
+  background: #6c757d;
+}
+
+.matrix-container {
+  margin-bottom: 30px;
+}
+
+.matrix-container h2 {
+  margin-bottom: 15px;
+}
+
+.correlation-table {
+  width: 100%;
+  border-collapse: collapse;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.correlation-table th,
+.correlation-table td {
+  padding: 15px;
+  text-align: center;
+  border: 1px solid #ddd;
+}
+
+.correlation-table th {
+  background: #1a1a2e;
+  color: white;
+}
+
+.correlation-table td:first-child {
+  background: #f8f9fa;
+  font-weight: bold;
+}
+
+.legend {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.legend h3 {
+  margin-bottom: 15px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.color-box {
+  width: 30px;
+  height: 20px;
+  border-radius: 4px;
+}
