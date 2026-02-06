@@ -58,9 +58,8 @@ def get_historical_prices(coin_id: str, days: int = 30) -> List[float]:
     """Fetch historical prices from Bitget"""
     symbol = get_bitget_symbol(coin_id)
     
-    # Bitget candlesticks endpoint
-    # granularity: 1min, 5min, 15min, 30min, 1h, 4h, 1D, 1W
-    url = f"{BITGET_API}/api/v2/spot/market/candles"
+    # Try Bitget v1 API (more stable)
+    url = f"{BITGET_API}/api/spot/v1/market/candles"
     
     # Calculate start time (days ago)
     end_time = int(datetime.now().timestamp() * 1000)
@@ -68,26 +67,35 @@ def get_historical_prices(coin_id: str, days: int = 30) -> List[float]:
     
     params = {
         "symbol": symbol,
-        "granularity": "1D",  # Daily candles
+        "period": "1day",  # 1day, 4hour, 1hour, etc
         "startTime": str(start_time),
         "endTime": str(end_time),
         "limit": str(days)
     }
     
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        
+        # Debug logging
+        print(f"Bitget API Request: {url}")
+        print(f"Params: {params}")
+        print(f"Status: {response.status_code}")
+        
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Failed to fetch data for {coin_id} (symbol: {symbol}). Status: {response.status_code}"
-            )
+            # Try fallback to CoinGecko if Bitget fails
+            print(f"Bitget failed, trying CoinGecko fallback...")
+            return get_coingecko_prices(coin_id, days)
         
         data = response.json()
         if data.get("code") != "00000":
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Bitget API error for {coin_id}: {data.get('msg', 'Unknown error')}"
-            )
+            print(f"Bitget API error: {data}")
+            return get_coingecko_prices(coin_id, days)
         
         candles = data.get("data", [])
         if not candles:
@@ -104,7 +112,39 @@ def get_historical_prices(coin_id: str, days: int = 30) -> List[float]:
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail=f"Timeout fetching data for {coin_id}")
     except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Network error: {str(e)}")
+        print(f"Network error: {e}")
+        return get_coingecko_prices(coin_id, days)
+
+def get_coingecko_prices(coin_id: str, days: int = 30) -> List[float]:
+    """Fallback to CoinGecko API"""
+    COINGECKO_API = "https://api.coingecko.com/api/v3"
+    url = f"{COINGECKO_API}/coins/{coin_id}/market_chart"
+    params = {
+        "vs_currency": "usd",
+        "days": days,
+        "interval": "daily"
+    }
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Failed to fetch data for {coin_id} from both Bitget and CoinGecko"
+            )
+        
+        data = response.json()
+        prices = [price[1] for price in data["prices"]]
+        return prices
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Failed to fetch data for {coin_id}: {str(e)}"
+        )
 
 def calculate_returns(prices: List[float]) -> List[float]:
     """Calculate percentage returns"""
