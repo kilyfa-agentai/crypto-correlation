@@ -322,6 +322,8 @@ def search_coins(query: str = ""):
             "may_related": [c for c in COIN_SYMBOLS.keys() if c not in all_matches][:5]
         }
     }
+
+@app.get("/")
 def root():
     return {"message": "Crypto Correlation API", "version": "1.0"}
 
